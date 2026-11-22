@@ -173,6 +173,12 @@
   .place { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
   .place label { display: grid; gap: 3px; color: var(--muted); font-size: 12px; }
   .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .color { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 3px 6px; color: var(--muted); font-size: 12px; }
+  .color > span:first-child { grid-column: 1 / -1; }
+  .swatch { width: 18px; height: 18px; border-radius: 4px; border: 1px solid var(--line); background: repeating-conic-gradient(#ccc 0 25%, #fff 0 50%) 50% / 8px 8px; position: relative; overflow: hidden; }
+  .swatch::after { content: ""; position: absolute; inset: 0; background: var(--swatch, transparent); }
+  .color input { width: 100%; border: 1px solid var(--line); background: var(--field); border-radius: 6px; padding: 5px 7px; font: 12px ui-monospace, monospace; }
+  .color input.invalid { outline: 2px solid var(--warn); outline-offset: -1px; }
   .actions { display: flex; gap: 6px; flex-wrap: wrap; }
   .hint { color: var(--muted); margin: 0; }
   .notice { margin: 0; padding: 8px 10px; border-radius: 6px; background: var(--field); color: var(--muted); }
@@ -249,6 +255,14 @@
         </div>
         <label class="field" title="Its words' size, in % of the picture's width, over its role's"><span>Size, in % of the width</span><input type="number" id="size" step="0.05" min="0" placeholder="its role's"></label>
         <div class="field">
+          <span class="colors-for">Its colors</span>
+          <div class="pair">
+            <label class="color" title="The color of its words, over every label's"><span>Words</span><span class="swatch" id="swatch-color"></span><input type="text" id="color" placeholder="every label's" spellcheck="false" autocomplete="off"></label>
+            <label class="color" title="The color behind its words where it covers the picture's own, over every label's"><span>Ground</span><span class="swatch" id="swatch-ground"></span><input type="text" id="ground" placeholder="every label's" spellcheck="false" autocomplete="off"></label>
+          </div>
+          <div class="actions"><button type="button" class="button" id="sample" title="Its words' color, and the color around them, from the picture shown">From the picture</button></div>
+        </div>
+        <div class="field">
           <span>Place, in % of the picture</span>
           <div class="place">
             <label title="The center, from the picture's left edge">x<input type="number" id="x" step="0.05"></label>
@@ -277,6 +291,15 @@
       <h2>Sizes</h2>
       <p class="hint">Each role's words, in % of the picture's width. Blank leaves it to the foundation. The page, in the foundation's fonts, shows whether they fit.</p>
       <div class="place" id="sizes"></div>
+    </section>
+    <section>
+      <h2>Colors</h2>
+      <p class="hint"><span class="colors-for">Every label's</span>, as hex. A label's own wins, and blank leaves them to the foundation's style.</p>
+      <div class="pair">
+        <label class="color" title="The color of the labels' words"><span>Words</span><span class="swatch" id="swatch-overlay-color"></span><input type="text" id="overlay-color" placeholder="the foundation's" spellcheck="false" autocomplete="off"></label>
+        <label class="color" title="The color behind the labels' words where they cover the picture's own"><span>Ground</span><span class="swatch" id="swatch-overlay-ground"></span><input type="text" id="overlay-ground" placeholder="the foundation's" spellcheck="false" autocomplete="off"></label>
+      </div>
+      <div class="actions" style="margin-top:6px"><button type="button" class="button" id="sample-all" title="Each label's colors from the picture shown: what they share is every label's, and a label keeps its own where it differs">From the picture, every label</button></div>
     </section>
     <section>
       <h2>The picture's own words</h2>
@@ -374,6 +397,43 @@ function vocabulary() {
 function roleOf(label) {
   return vocabulary().roles.includes(label.role) ? label.role : 'label'
 }
+
+const HEX = /^#(?:[0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i
+
+/** Whether the picture shown is the dark version, whose colors are its `dark` pair. */
+function darkShown() {
+  return info?.images[picture]?.role === 'dark'
+}
+
+/** A color of a holder (the overlay or a label) for the version shown, as written there. */
+function ownColor(holder, key) {
+  return (darkShown() ? holder?.dark?.[key] : holder?.[key]) ?? ''
+}
+
+/** A color for the version shown, as the page takes it: the label's, then every label's, dark first. */
+function colorFor(label, key) {
+  const light = label[key] ?? overlay[key]
+  return darkShown() ? label.dark?.[key] ?? overlay.dark?.[key] ?? light : light
+}
+
+/** Write a color for the version shown, or take it away; an empty `dark` goes too. */
+function setColor(holder, key, value) {
+  if (darkShown()) {
+    const pair = { ...(holder.dark ?? {}) }
+    if (value) pair[key] = value
+    else delete pair[key]
+    if (Object.keys(pair).length) holder.dark = pair
+    else delete holder.dark
+  } else if (value) holder[key] = value
+  else delete holder[key]
+}
+
+const toHex = (rgb) => `#${rgb.map((v) => Math.round(v).toString(16).padStart(2, '0')).join('')}`
+const rgbOf = (hex) => {
+  const h = hex.length === 4 ? hex.replace(/[0-9a-f]/gi, '$&$&').slice(1) : hex.slice(1, 7)
+  return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16))
+}
+const distance = (a, b) => Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[2] - b[2])
 
 /** A label's words' size on the stage, in pixels, from the overlay when it gives one. */
 function givenSize(label) {
@@ -506,11 +566,14 @@ function render() {
       span.className = `words${translated ? '' : ' untranslated'}`
       span.textContent = words
       box.append(span)
-      if (covers && sized && pixels) {
-        const ground = groundOf(label, pixels)
-        box.style.background = `rgb(${ground.join(' ')})`
+      if (covers && sized && (pixels || colorFor(label, 'ground'))) {
+        // The overlay's colors when it gives them, as the page draws them; else the picture's own.
+        const givenGround = colorFor(label, 'ground')
+        const ground = givenGround && HEX.test(givenGround) ? rgbOf(givenGround) : groundOf(label, pixels)
+        box.style.background = givenGround && HEX.test(givenGround) ? givenGround : `rgb(${ground.join(' ')})`
         const light = 0.2126 * ground[0] + 0.7152 * ground[1] + 0.0722 * ground[2] > 140
-        box.style.setProperty('--ink', light ? '#141821' : '#f2f4f8')
+        const givenInk = colorFor(label, 'color')
+        box.style.setProperty('--ink', givenInk && HEX.test(givenInk) ? givenInk : light ? '#141821' : '#f2f4f8')
       }
       if (index === selected && sized) {
         for (const edge of ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']) {
@@ -574,8 +637,19 @@ function renderPanel() {
     setValue('role', roleOf(label))
     setValue('align', vocabulary().aligns.includes(label.align) ? label.align : '')
     for (const key of ['x', 'y', 'w', 'h', 'size']) setValue(key, label[key] ?? '')
+    for (const key of ['color', 'ground']) {
+      setValue(key, ownColor(label, key))
+      $(`swatch-${key}`).style.setProperty('--swatch', HEX.test(colorFor(label, key) ?? '') ? colorFor(label, key) : 'transparent')
+    }
     renderWordsByLanguage(label)
   }
+  for (const key of ['color', 'ground']) {
+    setValue(`overlay-${key}`, ownColor(overlay, key))
+    const shown = darkShown() ? overlay.dark?.[key] ?? overlay[key] : overlay[key]
+    $(`swatch-overlay-${key}`).style.setProperty('--swatch', HEX.test(shown ?? '') ? shown : 'transparent')
+  }
+  const version = info.images.some((image) => image.role === 'dark') ? (darkShown() ? ', in the dark picture' : ', in the light picture') : ''
+  for (const element of document.querySelectorAll('.colors-for')) element.textContent = element.closest('#editor') ? `Its colors${version}` : `Every label's${version}`
 
   $('list').replaceChildren(
     ...overlay.labels.map((each, index) => {
@@ -807,6 +881,72 @@ for (const id of ['text', 'x', 'y', 'w', 'h', 'size']) {
   })
 }
 
+// A color field: kept as it is typed when it is a hex color or empty, one step of history when done.
+for (const [id, holder, key] of [['color', () => overlay.labels[selected], 'color'], ['ground', () => overlay.labels[selected], 'ground'], ['overlay-color', () => overlay, 'color'], ['overlay-ground', () => overlay, 'ground']]) {
+  const element = $(id)
+  element.addEventListener('focus', () => (editBefore = snapshot()))
+  element.addEventListener('input', () => {
+    const target = holder()
+    const value = element.value.trim()
+    const valid = value === '' || HEX.test(value)
+    element.classList.toggle('invalid', !valid)
+    if (!target || !valid) return
+    setColor(target, key, value)
+    render()
+  })
+  element.addEventListener('blur', () => {
+    element.classList.remove('invalid')
+    if (editBefore !== null) commit(editBefore)
+    editBefore = null
+  })
+}
+
+// Its colors from the picture shown: the color around its words, and its words' own.
+$('sample').onclick = async () => {
+  const label = overlay.labels[selected]
+  if (!label) return
+  const pixels = await pixelsOf(picture)
+  if (!pixels || !(label.w > 0 && label.h > 0)) return toast("This picture can't be read here, or the label has no box.", true)
+  const before = snapshot()
+  const ground = groundOf(label, pixels)
+  setColor(label, 'ground', toHex(ground))
+  const ink = inkOf(label, pixels, ground)
+  if (ink) setColor(label, 'color', toHex(ink))
+  commit(before)
+}
+
+/**
+ * Every label's colors from the picture shown. What the labels share becomes every label's, the
+ * middle of theirs, and a label keeps its own where it differs: a ground by more than a shade, since
+ * a box a shade off the picture around it shows, and words by more than a little.
+ */
+$('sample-all').onclick = async () => {
+  const pixels = await pixelsOf(picture)
+  if (!pixels) return toast("This picture can't be read here.", true)
+  const sampled = overlay.labels
+    .map((label) => {
+      if (!(label.w > 0 && label.h > 0)) return null
+      const ground = groundOf(label, pixels)
+      return { label, ground, ink: inkOf(label, pixels, ground) }
+    })
+    .filter(Boolean)
+  if (!sampled.length) return toast('No label with a box to sample.', true)
+  const before = snapshot()
+  const middle = (colors) => [0, 1, 2].map((c) => colors.map((rgb) => rgb[c]).sort((a, b) => a - b)[colors.length >> 1])
+  for (const [key, near] of [['ground', 4], ['color', 60]]) {
+    const values = sampled.map((each) => (key === 'ground' ? each.ground : each.ink)).filter(Boolean)
+    if (!values.length) continue
+    const shared = middle(values)
+    setColor(overlay, key, toHex(shared))
+    for (const each of sampled) {
+      const own = key === 'ground' ? each.ground : each.ink
+      setColor(each.label, key, own && distance(own, shared) > near ? toHex(own) : '')
+    }
+  }
+  commit(before)
+  toast(`Colors from the ${darkShown() ? 'dark' : 'light'} picture, for ${sampled.length} labels.`)
+}
+
 $('role').addEventListener('change', () => {
   const label = overlay.labels[selected]
   if (!label) return
@@ -991,6 +1131,27 @@ function edgeColor(pixels, { left, right, top, bottom }) {
 
 function groundOf(label, pixels) {
   return edgeColor(pixels, boxInPixels(label, pixels, 2))
+}
+
+/**
+ * The color of the words in a box: of the pixels that differ from its ground, the middle of the third
+ * that differ most, so the soft edges of letters, half ground, count for nothing.
+ */
+function inkOf(label, pixels, ground) {
+  const { left, right, top, bottom } = boxInPixels(label, pixels)
+  const { width, data } = pixels
+  const ink = []
+  for (let y = top; y <= bottom; y++) {
+    for (let x = left; x <= right; x++) {
+      const i = (y * width + x) * 4
+      const rgb = [data[i], data[i + 1], data[i + 2]]
+      const far = distance(rgb, ground)
+      if (far > INK) ink.push([far, rgb])
+    }
+  }
+  if (!ink.length) return null
+  const strongest = ink.sort((a, b) => b[0] - a[0]).slice(0, Math.max(1, Math.ceil(ink.length / 3))).map(([, rgb]) => rgb)
+  return [0, 1, 2].map((c) => strongest.map((rgb) => rgb[c]).sort((a, b) => a - b)[strongest.length >> 1])
 }
 
 /**

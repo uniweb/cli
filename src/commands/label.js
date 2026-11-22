@@ -187,34 +187,53 @@ async function listSections(site) {
 const PLAIN = /^[A-Za-z][\w.-]*$/
 const RESERVED = /^(true|false|null|yes|no|on|off|y|n|~)$/i
 
+/** The order the standard gives an object's fields: `sizes` by role, a `dark` pair color first. */
+const ORDER = { sizes: Object.keys(OVERLAY.fields.sizes.fields), dark: Object.keys(OVERLAY.fields.dark.fields) }
+
+/** An object's fields in the order the standard gives them, and any other after them. */
+function ordered(value, name) {
+  const order = ORDER[name] || []
+  const rank = (key) => (order.includes(key) ? order.indexOf(key) : order.length)
+  return Object.entries(value).sort(([a], [b]) => rank(a) - rank(b))
+}
+
 /** A value as YAML that reads back as itself: a word as is, anything else quoted, as JSON is valid YAML. */
-function scalar(value, quote) {
+function scalar(value, quote, name) {
   if (typeof value === 'number') return Number.isFinite(value) ? String(value) : 'null'
   if (typeof value === 'boolean' || value === null) return String(value)
   if (typeof value === 'string') return !quote && PLAIN.test(value) && !RESERVED.test(value) ? value : JSON.stringify(value)
   if (Array.isArray(value)) return `[${value.map((item) => scalar(item, false)).join(', ')}]`
   if (value && typeof value === 'object') {
-    const pairs = Object.entries(value).filter(([, item]) => item !== undefined && item !== null && item !== '')
+    const pairs = ordered(value, name).filter(([, item]) => !isEmpty(item))
     return `{ ${pairs.map(([name, item]) => `${PLAIN.test(name) && !RESERVED.test(name) ? name : JSON.stringify(name)}: ${scalar(item, false)}`).join(', ')} }`
   }
   return JSON.stringify(value)
 }
 
+/** Nothing to write: no value, an empty string, or an object or list holding nothing. */
+function isEmpty(value) {
+  if (value === undefined || value === null || value === '') return true
+  if (Array.isArray(value)) return value.length === 0
+  if (typeof value === 'object') return Object.values(value).every(isEmpty)
+  return false
+}
+
+/** The overlay's own fields, in the standard's order: `baked`, `sizes`, its colors, then its labels. */
+const OVERLAY_FIELDS = Object.keys(OVERLAY.fields)
+
 /**
- * The block as an author writes it: `baked`, then `sizes`, then one label a line, its fields in the
- * standard's order and a field it doesn't name after them. Words are quoted, so a line break reads
- * as `\n`; a role or a side is a word.
+ * The block as an author writes it: the overlay's fields in the standard's order, then one label a
+ * line, its fields in the standard's order and a field it doesn't name after them. Words and colors
+ * are quoted (a line break reads as `\n`, and `#` would start a comment); a role or a side is a word.
  */
 export function blockText(overlay, key, newline = '\n') {
   const lines = [`\`\`\`yaml:${key}`]
-  const keys = ['baked', 'sizes', 'labels', ...Object.keys(overlay).filter((name) => !['baked', 'sizes', 'labels'].includes(name))]
+  const keys = [...OVERLAY_FIELDS.filter((name) => name !== 'labels'), 'labels', ...Object.keys(overlay).filter((name) => !OVERLAY_FIELDS.includes(name))]
   for (const name of keys) {
     const value = overlay[name]
-    if (value === undefined || value === null) continue
-    if (name === 'baked' && (!Array.isArray(value) || !value.length)) continue
-    if (name === 'sizes' && (typeof value !== 'object' || !Object.values(value).some((size) => typeof size === 'number'))) continue
+    if (name !== 'labels' && isEmpty(value)) continue
     if (name !== 'labels') {
-      lines.push(`${name}: ${scalar(value, false)}`)
+      lines.push(`${name}: ${scalar(value, false, name)}`)
       continue
     }
     if (!Array.isArray(value) || !value.length) {
@@ -224,8 +243,8 @@ export function blockText(overlay, key, newline = '\n') {
     lines.push('labels:')
     for (const label of value) {
       const own = Object.keys(label).filter((field) => !LABEL_FIELDS.includes(field))
-      const named = [...LABEL_FIELDS, ...own].filter((field) => label[field] !== undefined && label[field] !== null && label[field] !== '')
-      lines.push(`  - { ${named.map((field) => `${field}: ${scalar(label[field], field === 'text')}`).join(', ')} }`)
+      const named = [...LABEL_FIELDS, ...own].filter((field) => !isEmpty(label[field]))
+      lines.push(`  - { ${named.map((field) => `${field}: ${scalar(label[field], field === 'text', field)}`).join(', ')} }`)
     }
   }
   lines.push('```')
@@ -258,20 +277,19 @@ export function withBlock(raw, block, key, newline = '\n') {
 }
 
 /**
- * Equal as the page reads them: what an empty `baked`, empty `sizes` or an empty field leaves out
- * isn't there, and the order of a label's fields is how the block writes them, not a difference.
+ * Equal as the page reads them: what is empty (a field, an empty `baked`, `sizes` or `dark`) isn't
+ * written, so isn't there, and the order of an object's fields is how the block writes them, not a
+ * difference.
  */
 function sameData(read, drawn) {
-  const tidy = (value) =>
-    JSON.stringify(value, (name, item) => {
-      if (item === '' || item === null || (name === 'baked' && Array.isArray(item) && !item.length)) return undefined
-      if (name === 'sizes' && item && typeof item === 'object' && !Object.values(item).some((size) => typeof size === 'number')) return undefined
-      if (item && typeof item === 'object' && !Array.isArray(item)) {
-        return Object.fromEntries(Object.keys(item).sort().map((key) => [key, item[key]]))
-      }
-      return item
-    })
-  return tidy(read ?? {}) === tidy(drawn)
+  const tidy = (value) => {
+    if (Array.isArray(value)) return value.map(tidy)
+    if (value && typeof value === 'object') {
+      return Object.fromEntries(Object.keys(value).sort().filter((key) => !isEmpty(value[key]) || key === 'labels').map((key) => [key, tidy(value[key])]))
+    }
+    return value
+  }
+  return JSON.stringify(tidy(read ?? {})) === JSON.stringify(tidy(drawn))
 }
 
 // ── Serving it ───────────────────────────────────────────────────────────────

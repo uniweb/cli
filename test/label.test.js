@@ -41,6 +41,33 @@ test('writes the block as an author does: baked, sizes, then a label a line in t
   assert.equal(blockText({ labels: [] }, 'overlay'), '```yaml:overlay\nlabels: []\n```')
 })
 
+test('writes the picture’s colors after the sizes, quoted, and leaves out an empty dark', () => {
+  const colored = {
+    baked: ['en'],
+    color: '#232d42',
+    dark: { color: '#d6d9de', ground: '#0a1123' },
+    labels: [
+      { text: 'YOU', x: 20, y: 14, role: 'title', ground: '#fbfcff', dark: {} },
+      { text: 'NEW', x: 50, y: 50, color: '#fff', dark: { ground: '#1d3f99' } },
+    ],
+  }
+  // A pair written ground first, as a sample may set it, is written in the standard's order.
+  colored.dark = { ground: '#0a1123', color: '#d6d9de' }
+  assert.equal(
+    blockText(colored, 'overlay'),
+    [
+      '```yaml:overlay',
+      'baked: [en]',
+      'color: "#232d42"',
+      'dark: { color: "#d6d9de", ground: "#0a1123" }',
+      'labels:',
+      '  - { text: "YOU", x: 20, y: 14, role: title, ground: "#fbfcff" }',
+      '  - { text: "NEW", x: 50, y: 50, color: "#fff", dark: { ground: "#1d3f99" } }',
+      '```',
+    ].join('\n'),
+  )
+})
+
 test('replaces the block it finds, and with none places it after the last picture, before any item', () => {
   const block = '```yaml:overlay\nlabels: []\n```'
   assert.equal(
