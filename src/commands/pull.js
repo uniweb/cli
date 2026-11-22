@@ -1394,7 +1394,10 @@ export async function pull(args = [], deps = {}) {
           siteDir: projDir,
           origin: client.origin,
           onProgress: (m) => note(`  ${m}`),
-          warn: (m) => note(`! ${m}`)
+          warn: (m) => note(`! ${m}`),
+          // The mounts this pull writes into, as for the pages: a picture beside a mounted page is
+          // found in the mounted folder, and one missing from it lands there only when it is one.
+          writable: mounts.writable
         })
         if (dl.downloaded.length) {
           note(`Assets        : ${dl.downloaded.length} downloaded`)

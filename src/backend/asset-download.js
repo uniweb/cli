@@ -38,8 +38,10 @@ import {
   readBackendState,
   updateBackendMap,
   carryServed,
-  servedFingerprint
+  servedFingerprint,
+  siteFileOf
 } from '@uniweb/build/uwx'
+import { mediaTrees, writableMounts } from '../utils/site-roots.js'
 
 /**
  * Collect every `{ id, ext, url }` an entity document references.
@@ -90,14 +92,17 @@ export function collectAssetRefs(document, map = {}) {
 }
 
 /**
- * Where a ref lives on disk: where the push read it (`resolveAssetPath`). A site-root
- * ref (`/images/hero.jpg`) is a file in public/. A ref the push keyed from a file beside
- * its markdown has no leading slash (`pages/home/band.jpg`, relative to the site root)
- * and lives there. ⛔ Until 2026-11-11 every ref was taken as site-root, so a pull wrote
- * a page's own picture a second time under public/pages/…, where nothing names it.
+ * Where a ref lives on disk: where the push read it. A site-root ref (`/images/hero.jpg`) is a file
+ * in public/. A ref the push keyed from a file beside its markdown has no leading slash: it is the
+ * file's path in the site's tree (`siteFileKey`), so `pages/home/band.jpg` is in the site's folder and
+ * `pages/docs/dev/_media/map.webp` in the folder mounted at `pages/docs`, wherever that is on disk
+ * (`siteFileOf`, over `tree`). ⛔ Until 2026-11-11 every ref was taken as site-root, so a pull wrote a
+ * page's own picture a second time under public/pages/…; and until 2026-11-22 a key was joined to the
+ * site's folder, so a pull of a site with a mounted docs folder fetched each of its pictures again
+ * into `site/pages/docs/…`, where nothing reads them.
  */
-const diskPathFor = (siteDir, ref) =>
-  ref.startsWith('/') ? join(siteDir, 'public', ref) : join(siteDir, ref)
+const diskPathFor = (siteDir, ref, tree) =>
+  ref.startsWith('/') ? join(siteDir, 'public', ref) : siteFileOf(siteDir, ref, tree)
 
 /** The generic landing path for an asset this project has never held. */
 export const genericRefFor = (id, ext) => `/assets/${id}${ext ? `.${ext}` : ''}`
@@ -120,9 +125,12 @@ export async function downloadMissingAssets({
   origin,
   fetchImpl,
   onProgress = () => {},
-  warn = () => {}
+  warn = () => {},
+  writable
 }) {
   const doFetch = fetchImpl || ((u) => globalThis.fetch(u))
+  // The site's tree, mounts included: every mount to find a picture in, the writable ones to write to.
+  const trees = mediaTrees(siteDir, writable ?? writableMounts(siteDir).writable)
   // Read first: a bare-string reference is only recognizable through the map.
   const map = readBackendState(siteDir, origin).assets || {}
   const refs = collectAssetRefs(document, map)
@@ -147,8 +155,8 @@ export async function downloadMissingAssets({
   for (const { id, ext, url } of refs) {
     const known = byId.get(id)
     const ref = known ? known[0] : genericRefFor(id, ext)
-    const held = (known || [ref]).find((r) => existsSync(diskPathFor(siteDir, r)))
-    const disk = diskPathFor(siteDir, ref)
+    const held = (known || [ref]).find((r) => existsSync(diskPathFor(siteDir, r, trees.read)))
+    const disk = diskPathFor(siteDir, ref, trees.write)
 
     if (held) {
       out.present.push(held)
@@ -160,6 +168,13 @@ export async function downloadMissingAssets({
       // Identity with no address beside it. Composing one would mean holding the
       // host's route layout; skipping is the honest answer.
       warn(`asset ${id}: no URL in content to fetch from (skipped)`)
+      out.skipped.push(ref)
+      continue
+    }
+    // A picture beside a page of a mount the pull doesn't write into: the copy holds that folder as
+    // it last agreed, as it holds its pages, and the content keeps the picture's URL, which renders.
+    if (trees.held.some((prefix) => ref.startsWith(prefix))) {
+      warn(`asset ${id}: ${ref} is in a mounted folder this pull does not write into (kept the URL in content)`)
       out.skipped.push(ref)
       continue
     }

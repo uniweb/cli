@@ -18,7 +18,7 @@
 import { readFileSync, realpathSync } from 'node:fs'
 import { isAbsolute, join, posix, relative, resolve, sep } from 'node:path'
 import yaml from 'js-yaml'
-import { siteContentRoots } from '@uniweb/build/uwx'
+import { siteContentRoots, siteTree } from '@uniweb/build/uwx'
 import { mountEntriesOf } from '@uniweb/build/site'
 import { mountHolding } from './mounted-repositories.js'
 import { fileAt, repoOf } from './sync-point.js'
@@ -196,6 +196,30 @@ export function submoduleMountRoots(siteDir) {
  *   mount in one, with the submodule's path from the site repository's top, the mounted folder's path
  *   in it, and its `repoOf`
  */
+/**
+ * The site's tree a picture's key names its file by (`siteFileOf`, `@uniweb/build/uwx`), as the push
+ * keys it (`siteFileKey`): the pages and layout wherever `paths:` puts them, and each mount. `read`
+ * holds every mount, to find a picture where the push read it; `write` only those a pull writes into
+ * (`writableMounts`), to put down one the copy lacks; `held` is the key prefix (`pages/<segment>/`) of
+ * each other mount, whose pictures a pull leaves as their URLs, as it leaves its pages.
+ *
+ * @param {string} siteDir
+ * @param {string[]} writable - the segments of the mounts a pull writes into
+ * @returns {{ read: Array<[string, string]>, write: Array<[string, string]>, held: string[] }}
+ */
+export function mediaTrees(siteDir, writable = []) {
+  const roots = rootsOf(siteDir)
+  const dirOf = (kind) => roots.find((r) => r.kind === kind)?.abs
+  const dirs = { pagesDir: dirOf('pages'), layoutDir: dirOf('layout') }
+  const mounts = roots.filter((r) => r.kind === 'mount').map((r) => [r.segment, r.abs])
+  const written = ([segment]) => writable.includes(segment)
+  return {
+    read: siteTree(siteDir, { ...dirs, mounts }),
+    write: siteTree(siteDir, { ...dirs, mounts: mounts.filter(written) }),
+    held: mounts.filter((m) => !written(m)).map(([segment]) => `pages/${segment}/`),
+  }
+}
+
 export function writableMounts(siteDir) {
   const repo = repoOf(siteDir)
   const writable = []

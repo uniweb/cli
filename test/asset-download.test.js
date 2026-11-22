@@ -396,3 +396,80 @@ test('CONTROL — a file that does not arrive is reported, and nothing is record
     rmSync(dir, { recursive: true, force: true })
   }
 })
+
+// ⭐ A PICTURE BESIDE A PAGE OF A MOUNTED FOLDER is keyed by its place in the site's tree,
+// `pages/docs/…`, wherever the folder is on disk (`siteFileKey`). Until 2026-11-22 a pull joined the
+// key to the site's folder: it missed the file in the mount, fetched it again, and wrote it into
+// `site/pages/docs/…`, where nothing reads it (measured on a site mounting its docs, two pictures).
+const mountedSite = () => {
+  const top = mkdtempSync(join(tmpdir(), 'uw-dl-mount-'))
+  const dir = join(top, 'site')
+  mkdirSync(dir, { recursive: true })
+  writeFileSync(join(dir, 'site.yml'), 'name: t\npaths:\n  pages/docs: ../docs\n')
+  mkdirSync(join(top, 'docs', 'dev', '_media'), { recursive: true })
+  return { top, dir, mounted: join(top, 'docs', 'dev', '_media', 'map.webp'), astray: join(dir, 'pages', 'docs', 'dev', '_media', 'map.webp') }
+}
+const MOUNTED_REF = 'pages/docs/dev/_media/map.webp'
+const mountedDoc = () => docWith({ src: '/gateway/asset/dist/m1/map.webp', assetId: 'm1', assetExt: 'webp' })
+const noFetch = async () => { throw new Error('fetched a picture the project holds') }
+
+test('⭐ a picture beside a mounted page is found in the mounted folder, and not fetched again', async () => {
+  const { top, dir, mounted, astray } = mountedSite()
+  try {
+    writeFileSync(mounted, 'MOUNTED')
+    updateBackendMap(dir, ORIGIN, 'assets', { [MOUNTED_REF]: { id: 'm1', ext: 'webp' } })
+    for (const writable of [['docs'], undefined]) {
+      const out = await downloadMissingAssets({ document: mountedDoc(), siteDir: dir, origin: ORIGIN, fetchImpl: noFetch, writable })
+      assert.deepEqual(out.present, [MOUNTED_REF])
+      assert.deepEqual(out.downloaded, [])
+    }
+    assert.equal(existsSync(astray), false)
+  } finally {
+    rmSync(top, { recursive: true, force: true })
+  }
+})
+
+test('…one missing from a mount the pull writes into lands in the mounted folder', async () => {
+  const { top, dir, mounted, astray } = mountedSite()
+  try {
+    updateBackendMap(dir, ORIGIN, 'assets', { [MOUNTED_REF]: { id: 'm1', ext: 'webp' } })
+    const out = await downloadMissingAssets({ document: mountedDoc(), siteDir: dir, origin: ORIGIN, fetchImpl: okFetch(), writable: ['docs'] })
+    assert.deepEqual(out.downloaded, [MOUNTED_REF])
+    assert.equal(readFileSync(mounted, 'utf8'), 'BYTES')
+    assert.equal(existsSync(astray), false)
+  } finally {
+    rmSync(top, { recursive: true, force: true })
+  }
+})
+
+test('…and one missing from a mount it holds keeps its URL: nothing is fetched or written', async () => {
+  const { top, dir, mounted, astray } = mountedSite()
+  try {
+    updateBackendMap(dir, ORIGIN, 'assets', { [MOUNTED_REF]: { id: 'm1', ext: 'webp' } })
+    const said = []
+    const out = await downloadMissingAssets({ document: mountedDoc(), siteDir: dir, origin: ORIGIN, fetchImpl: noFetch, writable: [], warn: (m) => said.push(m) })
+    assert.deepEqual(out.skipped, [MOUNTED_REF])
+    assert.equal(existsSync(mounted) || existsSync(astray), false)
+    assert.match(said.join('\n'), /mounted folder this pull does not write into/)
+  } finally {
+    rmSync(top, { recursive: true, force: true })
+  }
+})
+
+test('CONTROL — beside a page of the site\'s own folder, a missing picture lands beside it, as before', async () => {
+  const { top, dir } = mountedSite()
+  try {
+    updateBackendMap(dir, ORIGIN, 'assets', { 'pages/home/band.jpg': { id: 'b1', ext: 'jpg' } })
+    const out = await downloadMissingAssets({
+      document: docWith({ src: '/gateway/asset/dist/b1/band.jpg', assetId: 'b1', assetExt: 'jpg' }),
+      siteDir: dir,
+      origin: ORIGIN,
+      fetchImpl: okFetch(),
+      writable: ['docs']
+    })
+    assert.deepEqual(out.downloaded, ['pages/home/band.jpg'])
+    assert.equal(readFileSync(join(dir, 'pages', 'home', 'band.jpg'), 'utf8'), 'BYTES')
+  } finally {
+    rmSync(top, { recursive: true, force: true })
+  }
+})
