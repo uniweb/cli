@@ -2434,6 +2434,7 @@ ${colors.bright}Strings, translated by hash:${colors.reset}
   i18n generate      Start locale files from the manifest (alias: init)
   i18n status        What is left, per language: strings, and free-form translations
   i18n audit         Find stale and missing string translations
+  i18n words         Sections that leave out their type's own words (--write writes them in)
 
 ${colors.bright}Free-form, a whole section translated:${colors.reset}
   i18n status --freeform                    Each free-form translation, and what to do
