@@ -263,7 +263,23 @@ empty: No solutions found
 ```
 ````
 
-The runtime fills no default into a data block (`uniweb guide data`), so the component falls back to the same `labels.js` for a section written without the block. A later release that changes a default changes only the sections that never wrote their own. Only words a section holds are translated, so on a site with other languages, such a section shows the defaults on every language's page, and the build says nothing: write the block in each section of a type whose words a visitor reads.
+The runtime fills no default into a data block (`uniweb guide data`), so the component falls back to the same `labels.js` for a section written without the block. A later release that changes a default changes only the sections that never wrote their own. Only words a section holds are translated, so on a site with other languages, such a section shows the defaults on every language's page, and the build says nothing: write the block in each section of a type whose words a visitor reads. `uniweb i18n words` names the sections that hold none (`extract` and `status` say how many), and `--write` writes their type's words in.
+
+### Words over a picture
+
+A diagram, a screenshot or a map often holds words. Drawn over it as text, they are translated with the page, and one picture serves every language: a block of the standard type `@std/overlay`, which kit's `LabeledImage` draws.
+
+```js
+// meta.js: a block holds one overlay
+data: { overlay: { schema: '@std/overlay', single: true } }
+
+// index.jsx
+<LabeledImage overlay={content.data.overlay} width={image.width} height={image.height}>
+  <Image value={image} />
+</LabeledImage>
+```
+
+Each label is `text` (the words), `x` and `y` (the center of its box) and `w` and `h` (its size), in percent of the picture's width and height. It has a `role` from a short list: `title`, `label` (the default), `text` (words in a frame, which wrap within `w`) or `note` (small print). `align` (`left`, `center`, `right`) names the side it keeps as a longer translation grows it. `sizes` gives each role's size, in percent of the picture's width, since how large a picture's words are is the picture's. `baked: [en]` lists the languages whose picture shows its words itself: those show it as drawn, and the others cover its words with the labels. A picture made without words has no `baked` and shows its labels in every language. Style each role by its class, `labeled-image__label--<role>`, with `--label-ink` and `--label-ground`. Kit places the labels and brings no looks. It opens larger with its words (`enlarge`, on by default). `uniweb label <section file>` places the labels in a browser, fitting a box drawn loosely around a picture's words to them.
 
 ## Composition
 

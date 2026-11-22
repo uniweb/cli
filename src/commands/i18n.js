@@ -7,6 +7,7 @@
  *   uniweb i18n extract             Extract/update translatable strings (default)
  *   uniweb i18n generate [locales]  Generate starter locale files from manifest
  *   uniweb i18n status              Show translation coverage per locale
+ *   uniweb i18n words               Sections that leave out their type's own words
  *   uniweb i18n --target <path>     Specify site directory explicitly
  *
  * Aliases: sync → extract, init → generate
@@ -122,6 +123,9 @@ export async function i18n(args) {
       break
     case 'audit':
       await runAudit(siteRoot, config, effectiveArgs)
+      break
+    case 'words':
+      await runWords(siteRoot, config, effectiveArgs)
       break
     // Free-form translation commands
     case 'init-freeform':
@@ -334,6 +338,7 @@ async function runExtract(siteRoot, config, args) {
           `After translating, create locale files like ${config.localesDir}/es.json${colors.reset}`
         )
       }
+      await noteMissingWords(siteRoot, config)
     } catch (err) {
       error(`Extraction failed: ${err.message}`)
       if (verbose) console.error(err)
@@ -661,6 +666,7 @@ async function runStatus(siteRoot, config, args) {
       )
     }
     if (freeform) log(freeformSummary(freeform))
+    if (!scope.records) await noteMissingWords(siteRoot, config)
   } catch (err) {
     error(`Status check failed: ${err.message}`)
     process.exit(1)
@@ -1687,6 +1693,115 @@ async function discoverFiles(dir) {
 /**
  * Show help for i18n commands
  */
+/**
+ * The words sections draw that their content doesn't hold.
+ *
+ * A section type's own words (a search box's placeholder, "No results") are content: the type
+ * declares them with their defaults, and a section writes the block to say its own. Only what a
+ * section holds is translated, so a section that leaves the block out shows the foundation's words
+ * on every language's page (`@uniweb/build/i18n::sectionsMissingWords`). `--write` writes the
+ * defaults into each section that holds no block, as its block, so they are translated with the
+ * page. A section that holds a block chose its words, so it is named and left as it is.
+ */
+async function runWords(siteRoot, config, args) {
+  const outputJson = args.includes('--json')
+  const write = args.includes('--write')
+  const all = args.includes('--all')
+  const { sectionsMissingWords, withWords } = await import('@uniweb/build/i18n')
+  const every = config.locales.length ? await sectionsMissingWords(siteRoot) : []
+  // A section with no block shows every word its type draws in the foundation's language. One whose
+  // block leaves words out may leave out only what it doesn't draw, which no check can see.
+  const found = all ? every : every.filter((item) => !item.hasBlock)
+  const partial = every.length - every.filter((item) => !item.hasBlock).length
+
+  if (outputJson && !write) {
+    log(JSON.stringify({ languages: config.locales, sections: found }, null, 2))
+    return
+  }
+  if (!config.locales.length) {
+    log(`The site is in one language (${config.defaultLocale}), so a section's own words need no translation.`)
+    return
+  }
+  if (!found.length) {
+    success(`Every section holds a block of its type's words, so they are translated with the page.`)
+    if (partial) log(`${colors.dim}${partial} hold one that leaves some of them out, which may be words they don't draw: uniweb i18n words --all${colors.reset}`)
+    return
+  }
+
+  if (write) {
+    const written = []
+    const left = []
+    for (const item of found) {
+      if (item.hasBlock) {
+        left.push({ ...item, reason: `it holds a \`${item.key}\` block of its own` })
+        continue
+      }
+      const file = join(siteRoot, item.file)
+      const result = withWords(await readFile(file, 'utf8'), item.key, item.words)
+      if (result.text) {
+        await writeFile(file, result.text)
+        written.push(item)
+      } else {
+        left.push({ ...item, reason: result.reason })
+      }
+    }
+    if (outputJson) {
+      log(JSON.stringify({ languages: config.locales, written, left }, null, 2))
+      return
+    }
+    for (const item of written) success(`${item.file}: wrote its \`${item.key}\` block, ${item.words.length} words`)
+    if (written.length) {
+      log(`\n${colors.dim}They are the section's words now. Run 'uniweb i18n extract', then translate them.${colors.reset}`)
+    }
+    if (left.length) {
+      log(`\n${colors.yellow}Left for you to check:${colors.reset}`)
+      for (const item of left) log(`  ${item.file}: ${item.reason}`)
+    }
+    return
+  }
+
+  const names = (words) => {
+    const shown = words.slice(0, 6).map((w) => w.name).join(', ')
+    return words.length > 6 ? `${shown} and ${words.length - 6} more` : shown
+  }
+  log(`\n${colors.cyan}Words sections draw that their content doesn't hold${colors.reset}\n`)
+  for (const item of found) {
+    const what = item.hasBlock
+      ? `its \`${item.key}\` block leaves out ${item.words.length}`
+      : `no \`${item.key}\` block`
+    log(`  ${item.file} ${colors.dim}(${item.type})${colors.reset} — ${what}: ${names(item.words)}`)
+  }
+  const bare = found.filter((item) => !item.hasBlock).length
+  log(
+    `\nA section shows each of these in the foundation's language on every page, ${config.locales.join(', ')} included, if it draws it.`
+  )
+  if (bare) {
+    log(`${colors.dim}uniweb i18n words --write writes its type's words into the ${bare} section${bare === 1 ? '' : 's'} that hold${bare === 1 ? 's' : ''} no block.${colors.reset}`)
+  }
+  if (found.length > bare) {
+    log(`${colors.dim}A block that leaves words out is its author's choice: add a word to it if the section draws it.${colors.reset}`)
+  } else if (partial) {
+    log(`${colors.dim}${partial} more hold a block that leaves some of them out, which may be words they don't draw: uniweb i18n words --all${colors.reset}`)
+  }
+}
+
+/**
+ * One line when sections show their type's own words in the foundation's language, for `extract`
+ * and `status`: what `uniweb i18n words` lists.
+ */
+async function noteMissingWords(siteRoot, config) {
+  if (!config.locales.length) return
+  try {
+    const { sectionsMissingWords } = await import('@uniweb/build/i18n')
+    const bare = (await sectionsMissingWords(siteRoot)).filter((item) => !item.hasBlock).length
+    if (bare) {
+      log(`\n${colors.yellow}⚠${colors.reset} ${bare} section${bare === 1 ? ' holds' : 's hold'} none of the words ${bare === 1 ? 'its' : 'their'} type draws, so ${bare === 1 ? 'it shows' : 'they show'} them in the foundation's language on every page: uniweb i18n words`)
+    }
+  } catch {
+    // a foundation that doesn't read is reported by the commands that build it
+  }
+}
+
 function showHelp() {
   log(`
 ${colors.cyan}${colors.bright}Uniweb i18n${colors.reset}
@@ -1702,6 +1817,7 @@ ${colors.bright}Commands:${colors.reset}
   generate     Generate starter locale files from manifest keys
   status       Show translation coverage per locale
   audit        Find stale translations (no longer in manifest) and missing ones
+  words        Sections that leave out their type's own words, which then stay in the source language
 
   ${colors.dim}# Free-form (complete replacement) translation${colors.reset}
   init-freeform <locale> <path> <id>   Create free-form translation from source
@@ -1724,6 +1840,8 @@ ${colors.bright}Options:${colors.reset}
   --records-only   (extract/status/audit) Process only records
   --no-records     (extract/status/audit) Skip records (pages only)
   --all-stale          (update-hash) Update all stale translations at once
+  --write              (words) Write the type's words into each section that holds no block
+  --all                (words) Also list a section whose block leaves some of its type's words out
 
 ${colors.bright}Configuration:${colors.reset}
   Optional site.yml settings:
@@ -1768,6 +1886,8 @@ ${colors.bright}Examples:${colors.reset}
   uniweb i18n status es --missing --json  # Export missing for AI translation
   uniweb i18n audit                       # Find stale and missing translations
   uniweb i18n audit --clean               # Remove stale entries
+  uniweb i18n words                       # Sections showing their type's words untranslated
+  uniweb i18n words --write               # Write those words into the sections, to translate
 
   ${colors.dim}# Free-form workflow (complete section replacement)${colors.reset}
   uniweb i18n init-freeform es pages/about hero

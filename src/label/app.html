@@ -1,0 +1,1174 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Labeller</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f3f4f7;
+    --panel: #ffffff;
+    --text: #1b1f29;
+    --muted: #6a7182;
+    --line: #dfe2e9;
+    --field: #f6f7f9;
+    --accent: #2f6bff;
+    --accent-soft: rgb(47 107 255 / 0.1);
+    --box: #ff2d75;
+    --box-soft: rgb(255 45 117 / 0.1);
+    --warn: #e07b00;
+    --stage: #e4e6ec;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14161c;
+      --panel: #1b1e26;
+      --text: #e6e8ee;
+      --muted: #9097a8;
+      --line: #2c303b;
+      --field: #232731;
+      --accent: #5b8cff;
+      --accent-soft: rgb(91 140 255 / 0.16);
+      --stage: #0e1014;
+    }
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    display: grid;
+    grid-template-rows: auto auto 1fr;
+    overflow: hidden;
+  }
+  button, input, select, textarea { font: inherit; color: inherit; }
+
+  /* ── The bar ── */
+  header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+    overflow-x: auto;
+  }
+  header > * { flex-shrink: 0; }
+  .name { display: flex; align-items: baseline; gap: 8px; min-width: 60px; flex: 1 1 0; }
+  .name strong { font-size: 14px; }
+  .name span { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+  .seg button { border: 0; background: transparent; padding: 4px 9px; cursor: pointer; }
+  .seg button + button { border-left: 1px solid var(--line); }
+  .seg button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .check { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; user-select: none; }
+  .button {
+    border: 1px solid var(--line);
+    background: var(--panel);
+    border-radius: 7px;
+    padding: 4px 11px;
+    cursor: pointer;
+  }
+  .button:disabled { opacity: 0.45; cursor: default; }
+  .button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  .button.primary:disabled { background: var(--field); border-color: var(--line); color: var(--muted); opacity: 1; }
+  #status { color: var(--muted); white-space: nowrap; }
+  #page-link { color: var(--accent); text-decoration: none; white-space: nowrap; }
+  #page-link[aria-disabled="true"] { color: var(--muted); pointer-events: none; }
+
+  #banner { display: none; padding: 8px 12px; background: color-mix(in srgb, var(--warn) 16%, var(--panel)); border-bottom: 1px solid var(--line); }
+  #banner.shown { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+
+  /* ── The picture ── */
+  main { display: grid; grid-template-columns: minmax(0, 1fr) 320px; min-height: 0; }
+  #viewport { overflow: auto; background: var(--stage); padding: 28px 24px 40px; }
+  #stage {
+    position: relative;
+    margin: 0 auto;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;
+    cursor: crosshair;
+    box-shadow: 0 1px 3px rgb(0 0 0 / 0.18), 0 8px 28px rgb(0 0 0 / 0.12);
+  }
+  #picture { display: block; width: 100%; height: auto; pointer-events: none; -webkit-user-drag: none; }
+  #empty { padding: 60px 20px; text-align: center; color: var(--muted); }
+
+  .box {
+    position: absolute;
+    border: 1.5px solid var(--box);
+    background: var(--box-soft);
+    cursor: move;
+  }
+  .box.selected { border-color: var(--accent); background: var(--accent-soft); z-index: 2; }
+  .box.point { width: 12px !important; height: 12px !important; border-radius: 50%; transform: translate(-50%, -50%); }
+  .box .words {
+    position: absolute;
+    left: -1.5px;
+    bottom: 100%;
+    margin-bottom: 3px;
+    padding: 1px 5px;
+    border-radius: 3px;
+    background: rgb(17 20 28 / 0.82);
+    color: #fff;
+    font: 500 11px/1.25 system-ui, sans-serif;
+    white-space: pre;
+    pointer-events: none;
+  }
+  .box.selected .words { background: var(--accent); }
+  .box .words.untranslated { font-style: italic; opacity: 0.8; }
+  .box .words:empty { display: none; }
+  /* Covers: each box hides what it stands over, in the color around it, as a covering label does. */
+  .covers .box { display: flex; align-items: center; justify-content: center; border-style: dashed; border-width: 1px; }
+  .covers .box.selected { border-style: solid; border-width: 1.5px; }
+  .covers .box .words {
+    position: static;
+    margin: 0;
+    padding: 0;
+    background: none !important;
+    color: var(--ink, #111);
+    font-family: system-ui, sans-serif;
+    font-weight: 600;
+    line-height: 1.15;
+    text-align: center;
+  }
+  .covers .box.overflows { outline: 2px solid var(--warn); outline-offset: 1px; }
+  .handle {
+    position: absolute;
+    width: 9px;
+    height: 9px;
+    background: #fff;
+    border: 1.5px solid var(--accent);
+    border-radius: 2px;
+    transform: translate(-50%, -50%);
+    z-index: 3;
+  }
+  .handle[data-edge="nw"] { left: 0; top: 0; cursor: nwse-resize; }
+  .handle[data-edge="n"] { left: 50%; top: 0; cursor: ns-resize; }
+  .handle[data-edge="ne"] { left: 100%; top: 0; cursor: nesw-resize; }
+  .handle[data-edge="e"] { left: 100%; top: 50%; cursor: ew-resize; }
+  .handle[data-edge="se"] { left: 100%; top: 100%; cursor: nwse-resize; }
+  .handle[data-edge="s"] { left: 50%; top: 100%; cursor: ns-resize; }
+  .handle[data-edge="sw"] { left: 0; top: 100%; cursor: nesw-resize; }
+  .handle[data-edge="w"] { left: 0; top: 50%; cursor: ew-resize; }
+  #draft { position: absolute; display: none; border: 1.5px dashed var(--accent); background: var(--accent-soft); pointer-events: none; }
+
+  /* ── The panel ── */
+  aside { background: var(--panel); border-left: 1px solid var(--line); overflow: auto; padding: 14px; display: flex; flex-direction: column; gap: 18px; }
+  aside h2 { margin: 0 0 8px; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+  .field { display: grid; gap: 4px; margin-bottom: 10px; }
+  .field > span { color: var(--muted); font-size: 12px; }
+  textarea, select, input[type="number"] {
+    width: 100%;
+    border: 1px solid var(--line);
+    background: var(--field);
+    border-radius: 6px;
+    padding: 5px 7px;
+  }
+  textarea { resize: vertical; min-height: 54px; }
+  textarea:focus, select:focus, input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  .place { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+  .place label { display: grid; gap: 3px; color: var(--muted); font-size: 12px; }
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+  .hint { color: var(--muted); margin: 0; }
+  .notice { margin: 0; padding: 8px 10px; border-radius: 6px; background: var(--field); color: var(--muted); }
+  #words-by-language { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; margin: 0; }
+  #words-by-language dt { color: var(--muted); }
+  #words-by-language dd { margin: 0; white-space: pre-wrap; }
+  #words-by-language dd.missing { color: var(--muted); font-style: italic; }
+  #words-by-language dd.wide::after { content: "  longer than its box"; color: var(--warn); font-size: 11px; white-space: nowrap; }
+  #list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+  #list li { display: flex; gap: 8px; align-items: baseline; padding: 4px 6px; border-radius: 5px; cursor: pointer; }
+  #list li:hover { background: var(--field); }
+  #list li[aria-current="true"] { background: var(--accent-soft); }
+  #list .n { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 1.5em; text-align: right; }
+  #list .t { color: var(--muted); font-size: 11px; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+  #list .w { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #baked-list { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 6px 0; }
+  kbd { font: 11px ui-monospace, monospace; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 4px; }
+  .help { color: var(--muted); display: grid; gap: 4px; }
+
+  #toast {
+    position: fixed;
+    left: 50%;
+    bottom: 22px;
+    transform: translate(-50%, 20px);
+    opacity: 0;
+    background: #171a22;
+    color: #fff;
+    padding: 8px 14px;
+    border-radius: 8px;
+    box-shadow: 0 6px 24px rgb(0 0 0 / 0.25);
+    transition: opacity 0.15s, transform 0.15s;
+    pointer-events: none;
+  }
+  #toast.shown { opacity: 1; transform: translate(-50%, 0); }
+  #toast.error { background: #b4232c; }
+</style>
+</head>
+<body>
+<header>
+  <div class="name"><strong>Labeller</strong><span id="file"></span></div>
+  <div class="seg" id="pictures" aria-label="Picture"></div>
+  <div class="seg" id="languages" aria-label="Words in"></div>
+  <label class="check" title="Paint each box in the color around it, with its words inside, as a label covering the picture's own words does"><input type="checkbox" id="covers"> Covers</label>
+  <div class="seg" id="zoom" aria-label="Zoom">
+    <button type="button" data-zoom="1" aria-pressed="true">Fit</button>
+    <button type="button" data-zoom="2">2×</button>
+    <button type="button" data-zoom="3">3×</button>
+  </div>
+  <a id="page-link" target="_blank" rel="noopener" aria-disabled="true">Open on the page ↗</a>
+  <span id="status"></span>
+  <button type="button" class="button" id="undo" title="Undo (⌘Z)">Undo</button>
+  <button type="button" class="button" id="redo" title="Redo (⇧⌘Z)">Redo</button>
+  <button type="button" class="button primary" id="save" title="Save (⌘S)">Save</button>
+</header>
+<div id="banner" role="alert"></div>
+<main>
+  <div id="viewport">
+    <div id="stage">
+      <img id="picture" alt="" draggable="false">
+      <div id="boxes"></div>
+      <div id="draft"></div>
+    </div>
+    <p id="empty" hidden></p>
+  </div>
+  <aside>
+    <section>
+      <h2>Label</h2>
+      <p class="hint" id="nothing-selected">Select a label, or drag on the picture to add one.</p>
+      <div id="editor" hidden>
+        <label class="field"><span id="text-name">Text</span><textarea id="text" rows="2" spellcheck="false"></textarea></label>
+        <div class="pair">
+          <label class="field" title="What the words are in the picture: a title, a label (the default), text in a frame, or a note"><span>Role</span><select id="role"></select></label>
+          <label class="field" title="The side of its box a label keeps while a longer translation grows it"><span>Keeps its</span><select id="align"></select></label>
+        </div>
+        <label class="field" title="Its words' size, in % of the picture's width, over its role's"><span>Size, in % of the width</span><input type="number" id="size" step="0.05" min="0" placeholder="its role's"></label>
+        <div class="field">
+          <span>Place, in % of the picture</span>
+          <div class="place">
+            <label title="The center, from the picture's left edge">x<input type="number" id="x" step="0.05"></label>
+            <label title="The center, from the picture's top edge">y<input type="number" id="y" step="0.05"></label>
+            <label title="The box's width">w<input type="number" id="w" step="0.05" min="0"></label>
+            <label title="The box's height">h<input type="number" id="h" step="0.05" min="0"></label>
+          </div>
+        </div>
+        <div class="actions">
+          <button type="button" class="button" id="fit" title="Shrink or grow the box to the words inside it (F)">Fit to words</button>
+          <button type="button" class="button" id="duplicate" title="⌘D, or ⌥-drag a box">Duplicate</button>
+          <button type="button" class="button" id="delete" title="⌫">Delete</button>
+        </div>
+      </div>
+    </section>
+    <section id="languages-section" hidden>
+      <h2>Its words</h2>
+      <dl id="words-by-language"></dl>
+    </section>
+    <section>
+      <h2 id="list-title">Labels</h2>
+      <ol id="list"></ol>
+      <label class="check" style="margin-top:8px"><input type="checkbox" id="snap-new" checked> Fit a new box to its words</label>
+    </section>
+    <section>
+      <h2>Sizes</h2>
+      <p class="hint">Each role's words, in % of the picture's width. Blank leaves it to the foundation. The page, in the foundation's fonts, shows whether they fit.</p>
+      <div class="place" id="sizes"></div>
+    </section>
+    <section>
+      <h2>The picture's own words</h2>
+      <p class="hint" id="baked-name">The languages it shows its words in itself: on a page in one of them, the labels are left out.</p>
+      <div id="baked-list"></div>
+      <p class="hint">None, for a picture with no words of its own: its labels show in every language.</p>
+    </section>
+    <p class="notice" id="notice" hidden></p>
+    <section class="help">
+      <h2>Keys</h2>
+      <span>Drag on the picture to add a label; drag a box to move it, its handles to size it (<kbd>⌥</kbd> keeps the center).</span>
+      <span><kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd><kbd>↓</kbd> nudge (<kbd>⇧</kbd> ×10) · <kbd>Tab</kbd> next · <kbd>F</kbd> fit · <kbd>⌘D</kbd> duplicate · <kbd>⌫</kbd> delete</span>
+      <span><kbd>⌘Z</kbd> undo · <kbd>⇧⌘Z</kbd> redo · <kbd>⌘S</kbd> save · <kbd>Esc</kbd> deselect</span>
+    </section>
+  </aside>
+</main>
+<div id="toast" role="status"></div>
+
+<script type="module">
+const TOKEN = '__LABELLER_TOKEN__'
+const $ = (id) => document.getElementById(id)
+const round = (value) => Math.round(value * 100) / 100
+const clamp = (value, low, high) => Math.min(high, Math.max(low, value))
+const MIN = 0.3 // the smallest a box gets, in % of the picture
+const INK = 90 // how far a pixel's color is from the ground to count as words, summed over R, G and B
+
+let info = null // what the server read: the section, its pictures, its languages
+let overlay = { labels: [] }
+let selected = -1
+let picture = 0
+let language = 'en'
+let covers = false
+let zoom = 1
+let version = ''
+let saved = ''
+let lastRole
+let translations = {}
+let drag = null
+let editBefore = null
+let lastNudge = null
+const past = []
+const future = []
+
+async function api(path, body) {
+  const response = await fetch(path, {
+    method: body ? 'POST' : 'GET',
+    headers: { 'X-Labeller-Token': TOKEN, ...(body && { 'Content-Type': 'application/json' }) },
+    body: body && JSON.stringify(body),
+  })
+  return { ok: response.ok, status: response.status, data: await response.json().catch(() => ({})) }
+}
+
+// ── Loading ─────────────────────────────────────────────────────────────────
+
+async function load() {
+  const { ok, data } = await api('/api/section')
+  if (!ok) return toast(data.error || 'Could not read the section.', true)
+  info = data
+  overlay = structuredClone(data.overlay ?? {})
+  if (!Array.isArray(overlay.labels)) overlay.labels = []
+  translations = data.translations || {}
+  version = data.version
+  saved = snapshot()
+  language = data.defaultLanguage
+  past.length = future.length = 0
+  selected = Math.min(selected, overlay.labels.length - 1)
+
+  $('file').textContent = `${data.file} · ${data.type ?? 'section'} · \`${data.tag}\` (@std/overlay)`
+  document.title = `Labeller · ${data.file}`
+  buildPictures()
+  buildLanguages()
+  buildChoices()
+  buildSizes()
+  buildBaked()
+
+  const notices = []
+  if (!data.overlay) notices.push(`This section has no \`yaml:${data.tag}\` block yet: Save adds one after its picture.`)
+  $('notice').hidden = !notices.length
+  $('notice').textContent = notices.join(' ')
+
+  if (!data.images.length) {
+    $('stage').hidden = true
+    $('empty').hidden = false
+    $('empty').textContent = 'This section has no picture to label.'
+  } else showPicture(Math.min(picture, data.images.length - 1))
+  render()
+}
+
+/** The roles and sides of `@std/overlay`: a short list, so each is a choice. */
+function vocabulary() {
+  return info?.vocabulary ?? { roles: ['title', 'label', 'text', 'note'], aligns: ['left', 'center', 'right'] }
+}
+
+/** A label's role, as the page reads it: one it doesn't know is a label. */
+function roleOf(label) {
+  return vocabulary().roles.includes(label.role) ? label.role : 'label'
+}
+
+/** A label's words' size on the stage, in pixels, from the overlay when it gives one. */
+function givenSize(label) {
+  const size = typeof label.size === 'number' ? label.size : overlay.sizes?.[roleOf(label)]
+  return typeof size === 'number' && size > 0 ? (size / 100) * $('stage').clientWidth : null
+}
+
+function buildPictures() {
+  const images = info.images
+  const dark = images.some((image) => image.role === 'dark')
+  $('pictures').hidden = images.length < 2
+  $('pictures').replaceChildren(
+    ...images.map((image, index) => {
+      const button = document.createElement('button')
+      button.type = 'button'
+      button.textContent = image.role === 'dark' ? 'Dark' : dark && images.length === 2 ? 'Light' : `Picture ${index + 1}`
+      button.title = image.src
+      button.onclick = () => showPicture(index)
+      return button
+    }),
+  )
+}
+
+function buildLanguages() {
+  $('languages').hidden = info.languages.length < 2
+  $('languages').replaceChildren(
+    ...info.languages.map((code) => {
+      const button = document.createElement('button')
+      button.type = 'button'
+      button.textContent = code
+      button.title = `The labels' words in ${info.languageNames[code] ?? code}`
+      button.dataset.language = code
+      button.onclick = () => {
+        language = code
+        render()
+      }
+      return button
+    }),
+  )
+}
+
+function buildChoices() {
+  const { roles, aligns } = vocabulary()
+  $('role').replaceChildren(...roles.map((role) => new Option(role === 'label' ? 'label (default)' : role, role)))
+  $('align').replaceChildren(new Option('its role\'s side', ''), ...aligns.map((side) => new Option(side, side)))
+}
+
+function buildSizes() {
+  $('sizes').replaceChildren(
+    ...vocabulary().roles.map((role) => {
+      const label = document.createElement('label')
+      label.title = `The size of a ${role}'s words, in % of the picture's width`
+      const input = Object.assign(document.createElement('input'), { type: 'number', step: '0.05', min: '0', id: `size-${role}` })
+      input.addEventListener('focus', () => (editBefore = snapshot()))
+      input.addEventListener('input', () => {
+        const sizes = { ...(overlay.sizes ?? {}) }
+        if (input.value === '' || !Number.isFinite(input.valueAsNumber)) delete sizes[role]
+        else sizes[role] = round(input.valueAsNumber)
+        if (Object.keys(sizes).length) overlay.sizes = sizes
+        else delete overlay.sizes
+        render()
+      })
+      input.addEventListener('blur', () => {
+        if (editBefore !== null) commit(editBefore)
+        editBefore = null
+      })
+      label.append(role, input)
+      return label
+    }),
+  )
+}
+
+function buildBaked() {
+  $('baked-list').replaceChildren(
+    ...info.languages.map((code) => {
+      const label = document.createElement('label')
+      label.className = 'check'
+      const box = document.createElement('input')
+      box.type = 'checkbox'
+      box.value = code
+      box.onchange = () => {
+        const before = snapshot()
+        const chosen = info.languages.filter((each) => $('baked-list').querySelector(`input[value="${each}"]`).checked)
+        if (chosen.length) overlay.baked = chosen
+        else delete overlay.baked
+        commit(before)
+      }
+      label.append(box, ` ${info.languageNames[code] ?? code}`)
+      return label
+    }),
+  )
+}
+
+function showPicture(index) {
+  picture = index
+  const image = info.images[index]
+  $('picture').src = image.url
+  $('picture').alt = image.alt || ''
+  for (const [i, button] of [...$('pictures').children].entries()) button.setAttribute('aria-pressed', String(i === index))
+  pixelsOf(index).then(() => render())
+}
+
+// ── Drawing the boxes ───────────────────────────────────────────────────────
+
+function wordsOf(label) {
+  const text = label.text ?? ''
+  if (language === info.defaultLanguage) return { words: text, translated: true }
+  const translation = translations[language]?.[text]
+  return translation ? { words: translation, translated: true } : { words: text, translated: false }
+}
+
+function render() {
+  if (!info) return
+  $('stage').classList.toggle('covers', covers)
+  const pixels = pixelCache.get(picture)?.value
+  $('boxes').replaceChildren(
+    ...overlay.labels.map((label, index) => {
+      const box = document.createElement('div')
+      const sized = label.w > 0 && label.h > 0
+      box.className = `box${index === selected ? ' selected' : ''}${sized ? '' : ' point'}`
+      box.dataset.index = index
+      const w = sized ? label.w : 0
+      const h = sized ? label.h : 0
+      box.style.left = `${label.x - w / 2}%`
+      box.style.top = `${label.y - h / 2}%`
+      box.style.width = `${w}%`
+      box.style.height = `${h}%`
+      const { words, translated } = wordsOf(label)
+      const span = document.createElement('span')
+      span.className = `words${translated ? '' : ' untranslated'}`
+      span.textContent = words
+      box.append(span)
+      if (covers && sized && pixels) {
+        const ground = groundOf(label, pixels)
+        box.style.background = `rgb(${ground.join(' ')})`
+        const light = 0.2126 * ground[0] + 0.7152 * ground[1] + 0.0722 * ground[2] > 140
+        box.style.setProperty('--ink', light ? '#141821' : '#f2f4f8')
+      }
+      if (index === selected && sized) {
+        for (const edge of ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']) {
+          const handle = document.createElement('div')
+          handle.className = 'handle'
+          handle.dataset.edge = edge
+          box.append(handle)
+        }
+      }
+      return box
+    }),
+  )
+  if (covers) fitWords()
+  renderPanel()
+}
+
+/** In covers, each box's words at the size its own words fill it, and a mark where they don't fit. */
+function fitWords() {
+  for (const box of $('boxes').children) {
+    const words = box.querySelector('.words')
+    const label = overlay.labels[Number(box.dataset.index)]
+    if (!words || !label || box.classList.contains('point')) continue
+    const size = givenSize(label) ?? wordsSize(label, box.clientWidth, box.clientHeight)
+    words.style.fontSize = `${size}px`
+    box.classList.toggle('overflows', overflows(words.textContent, size, box.clientWidth, box.clientHeight))
+  }
+}
+
+const measure = document.createElement('canvas').getContext('2d')
+const WORDS_FONT = 'system-ui, sans-serif'
+
+/**
+ * The size the picture's own words fill their box at, as near as a font that isn't the picture's
+ * can say: every language's words are shown at it, so a longer translation shows as longer.
+ */
+function wordsSize(label, width, height) {
+  const lines = String(label.text ?? '').split('\n')
+  measure.font = `600 100px ${WORDS_FONT}`
+  const widest = Math.max(1, ...lines.map((line) => measure.measureText(line).width))
+  return Math.max(4, Math.min(height / lines.length / 1.3, ((width * 0.9) / widest) * 100))
+}
+
+/** Whether words at a size take more room than a box has: a page then grows the box, or wraps them. */
+function overflows(words, size, width, height) {
+  const lines = String(words).split('\n')
+  measure.font = `600 ${size}px ${WORDS_FONT}`
+  const widest = Math.max(0, ...lines.map((line) => measure.measureText(line).width))
+  return widest > width + 1 || lines.length * size * 1.15 > height + 1
+}
+
+function renderPanel() {
+  for (const button of $('languages').children) button.setAttribute('aria-pressed', String(button.dataset.language === language))
+  for (const box of $('baked-list').querySelectorAll('input')) box.checked = Boolean(overlay.baked?.includes(box.value))
+
+  const label = overlay.labels[selected]
+  $('editor').hidden = !label
+  $('nothing-selected').hidden = Boolean(label)
+  $('languages-section').hidden = !label || info.languages.length < 2
+  if (label) {
+    setValue('text', label.text ?? '')
+    setValue('role', roleOf(label))
+    setValue('align', vocabulary().aligns.includes(label.align) ? label.align : '')
+    for (const key of ['x', 'y', 'w', 'h', 'size']) setValue(key, label[key] ?? '')
+    renderWordsByLanguage(label)
+  }
+
+  $('list').replaceChildren(
+    ...overlay.labels.map((each, index) => {
+      const item = document.createElement('li')
+      item.setAttribute('aria-current', String(index === selected))
+      item.onclick = () => {
+        select(index)
+        $('boxes').children[index]?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' })
+      }
+      const n = Object.assign(document.createElement('span'), { className: 'n', textContent: index + 1 })
+      const words = Object.assign(document.createElement('span'), { className: 'w', textContent: (each.text || '—').replace(/\n/g, ' ⏎ ') })
+      item.append(n, words)
+      if (each.role && each.role !== 'label') item.insertBefore(Object.assign(document.createElement('span'), { className: 't', textContent: each.role }), words)
+      return item
+    }),
+  )
+
+  for (const role of vocabulary().roles) setValue(`size-${role}`, overlay.sizes?.[role] ?? '')
+
+  const dirty = snapshot() !== saved
+  $('save').disabled = !dirty
+  $('undo').disabled = !past.length
+  $('redo').disabled = !future.length
+  $('status').textContent = `${overlay.labels.length} label${overlay.labels.length === 1 ? '' : 's'} · ${dirty ? 'not saved' : 'saved'}`
+  const link = info.pageLinks?.[language]
+  $('page-link').setAttribute('aria-disabled', String(!link))
+  if (link) $('page-link').href = link
+  else $('page-link').removeAttribute('href')
+  $('page-link').title = link
+    ? `The section on its page, in ${info.languageNames[language] ?? language}, as the foundation draws it`
+    : 'Start `uniweb dev` to open the section on its page'
+}
+
+/** The label's words in each language, and whether each takes more room than the picture's own. */
+function renderWordsByLanguage(label) {
+  const box = $('boxes').children[selected]
+  const height = box?.clientHeight ?? 0
+  const width = box?.clientWidth ?? 0
+  const size = height && width ? givenSize(label) ?? wordsSize(label, width, height) : 0
+  const rows = []
+  for (const code of info.languages) {
+    const words = code === info.defaultLanguage ? label.text ?? '' : translations[code]?.[label.text]
+    const term = Object.assign(document.createElement('dt'), { textContent: code, title: info.languageNames[code] ?? code })
+    const value = document.createElement('dd')
+    if (!words) {
+      value.className = 'missing'
+      value.textContent = code === info.defaultLanguage ? '—' : 'not translated'
+    } else {
+      value.textContent = words
+      if (size && label.w > 0 && overflows(words, size, width, height)) value.classList.add('wide')
+    }
+    rows.push(term, value)
+  }
+  $('words-by-language').replaceChildren(...rows)
+}
+
+function setValue(id, value) {
+  const element = $(id)
+  if (document.activeElement !== element) element.value = value
+}
+
+// ── Editing ─────────────────────────────────────────────────────────────────
+
+function snapshot() {
+  return JSON.stringify(overlay)
+}
+
+/** One step of history, from the state before it, when the step changed anything. */
+function commit(before) {
+  if (before !== snapshot()) {
+    past.push(before)
+    if (past.length > 300) past.shift()
+    future.length = 0
+  }
+  render()
+}
+
+function restore(state) {
+  overlay = JSON.parse(state)
+  if (selected >= overlay.labels.length) selected = overlay.labels.length - 1
+  render()
+}
+
+function undo() {
+  if (!past.length) return
+  future.push(snapshot())
+  restore(past.pop())
+}
+
+function redo() {
+  if (!future.length) return
+  past.push(snapshot())
+  restore(future.pop())
+}
+
+function select(index) {
+  selected = index
+  lastNudge = null
+  render()
+}
+
+function pointOf(event) {
+  const rect = $('stage').getBoundingClientRect()
+  return {
+    x: clamp(((event.clientX - rect.left) / rect.width) * 100, 0, 100),
+    y: clamp(((event.clientY - rect.top) / rect.height) * 100, 0, 100),
+  }
+}
+
+function rectOf(a, b) {
+  const left = Math.min(a.x, b.x)
+  const top = Math.min(a.y, b.y)
+  const w = Math.abs(a.x - b.x)
+  const h = Math.abs(a.y - b.y)
+  return { x: left + w / 2, y: top + h / 2, w, h }
+}
+
+function resize(label, start, edge, at, centered) {
+  const dx = at.x - drag.start.x
+  const dy = at.y - drag.start.y
+  let left = start.x - start.w / 2
+  let right = start.x + start.w / 2
+  let top = start.y - start.h / 2
+  let bottom = start.y + start.h / 2
+  if (edge.includes('w')) [left, right] = [left + dx, centered ? right - dx : right]
+  if (edge.includes('e')) [left, right] = [centered ? left - dx : left, right + dx]
+  if (edge.includes('n')) [top, bottom] = [top + dy, centered ? bottom - dy : bottom]
+  if (edge.includes('s')) [top, bottom] = [centered ? top - dy : top, bottom + dy]
+  label.x = round(clamp((left + right) / 2, 0, 100))
+  label.y = round(clamp((top + bottom) / 2, 0, 100))
+  label.w = round(Math.max(MIN, Math.abs(right - left)))
+  label.h = round(Math.max(MIN, Math.abs(bottom - top)))
+}
+
+const stage = $('stage')
+stage.addEventListener('pointerdown', (event) => {
+  if (event.button !== 0 || !info) return
+  // A field being edited is done: its change is a step of its own, before this one.
+  if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur()
+  const at = pointOf(event)
+  const handle = event.target.closest('.handle')
+  const box = event.target.closest('.box')
+  const before = snapshot()
+  if (handle && selected >= 0) {
+    drag = { kind: 'resize', edge: handle.dataset.edge, start: at, label: { ...overlay.labels[selected] }, before }
+  } else if (box) {
+    let index = Number(box.dataset.index)
+    if (event.altKey) {
+      overlay.labels.splice(index + 1, 0, structuredClone(overlay.labels[index]))
+      index += 1
+    }
+    selected = index
+    drag = { kind: 'move', start: at, label: { ...overlay.labels[index] }, before }
+    render()
+  } else {
+    drag = { kind: 'draw', start: at, before }
+    selected = -1
+    render()
+  }
+  stage.setPointerCapture(event.pointerId)
+  event.preventDefault()
+})
+
+stage.addEventListener('pointermove', (event) => {
+  if (!drag) return
+  const at = pointOf(event)
+  if (drag.kind === 'draw') {
+    const rect = rectOf(drag.start, at)
+    Object.assign($('draft').style, {
+      display: 'block',
+      left: `${rect.x - rect.w / 2}%`,
+      top: `${rect.y - rect.h / 2}%`,
+      width: `${rect.w}%`,
+      height: `${rect.h}%`,
+    })
+    return
+  }
+  const label = overlay.labels[selected]
+  if (!label) return
+  if (drag.kind === 'move') {
+    label.x = round(clamp(drag.label.x + at.x - drag.start.x, 0, 100))
+    label.y = round(clamp(drag.label.y + at.y - drag.start.y, 0, 100))
+  } else resize(label, drag.label, drag.edge, at, event.altKey)
+  render()
+})
+
+stage.addEventListener('pointerup', async (event) => {
+  if (!drag) return
+  const done = drag
+  drag = null
+  if (done.kind !== 'draw') return commit(done.before)
+  $('draft').style.display = 'none'
+  const rect = rectOf(done.start, pointOf(event))
+  if (rect.w < 0.4 || rect.h < 0.4) return render()
+  const label = { text: '', x: round(rect.x), y: round(rect.y), w: round(rect.w), h: round(rect.h) }
+  const role = lastRole ?? overlay.labels.at(-1)?.role
+  if (role && role !== 'label') label.role = role
+  overlay.labels.push(label)
+  selected = overlay.labels.length - 1
+  if ($('snap-new').checked) await fitToWords(label, { quiet: true })
+  commit(done.before)
+  $('text').focus()
+})
+
+stage.addEventListener('pointercancel', () => {
+  if (drag?.kind === 'draw') $('draft').style.display = 'none'
+  if (drag) restore(drag.before)
+  drag = null
+})
+
+// The fields: a change shows as it is typed, and is one step of history when it is done.
+for (const id of ['text', 'x', 'y', 'w', 'h', 'size']) {
+  const element = $(id)
+  element.addEventListener('focus', () => (editBefore = snapshot()))
+  element.addEventListener('input', () => {
+    const label = overlay.labels[selected]
+    if (!label) return
+    if (id === 'text') {
+      label.text = element.value
+      translateSoon(element.value)
+    } else if (element.value === '') {
+      if (id === 'w' || id === 'h' || id === 'size') delete label[id]
+    } else if (Number.isFinite(element.valueAsNumber)) label[id] = round(element.valueAsNumber)
+    render()
+  })
+  element.addEventListener('blur', () => {
+    if (editBefore !== null) commit(editBefore)
+    editBefore = null
+  })
+}
+
+$('role').addEventListener('change', () => {
+  const label = overlay.labels[selected]
+  if (!label) return
+  const before = snapshot()
+  lastRole = $('role').value
+  if (lastRole && lastRole !== 'label') label.role = lastRole
+  else delete label.role
+  commit(before)
+})
+
+$('align').addEventListener('change', () => {
+  const label = overlay.labels[selected]
+  if (!label) return
+  const before = snapshot()
+  if ($('align').value) label.align = $('align').value
+  else delete label.align
+  commit(before)
+})
+
+$('fit').onclick = async () => {
+  const label = overlay.labels[selected]
+  if (!label) return
+  const before = snapshot()
+  if (await fitToWords(label)) commit(before)
+}
+$('duplicate').onclick = () => duplicate()
+$('delete').onclick = () => remove()
+$('undo').onclick = () => undo()
+$('redo').onclick = () => redo()
+$('save').onclick = () => save()
+$('covers').onchange = () => {
+  covers = $('covers').checked
+  render()
+}
+for (const button of $('zoom').children) {
+  button.onclick = () => {
+    zoom = Number(button.dataset.zoom)
+    for (const each of $('zoom').children) each.setAttribute('aria-pressed', String(each === button))
+    layout()
+  }
+}
+
+function duplicate() {
+  const label = overlay.labels[selected]
+  if (!label) return
+  const before = snapshot()
+  const copy = structuredClone(label)
+  copy.y = round(clamp(copy.y + (copy.h || 2) + 1, 0, 100))
+  overlay.labels.splice(selected + 1, 0, copy)
+  selected += 1
+  commit(before)
+}
+
+function remove() {
+  if (!overlay.labels[selected]) return
+  const before = snapshot()
+  overlay.labels.splice(selected, 1)
+  selected = Math.min(selected, overlay.labels.length - 1)
+  commit(before)
+}
+
+function nudge(dx, dy) {
+  const label = overlay.labels[selected]
+  if (!label) return
+  // A run of nudges to one label is one step of history.
+  const now = Date.now()
+  const before = lastNudge && lastNudge.index === selected && now - lastNudge.at < 900 ? null : snapshot()
+  label.x = round(clamp(label.x + dx, 0, 100))
+  label.y = round(clamp(label.y + dy, 0, 100))
+  if (before !== null) {
+    past.push(before)
+    future.length = 0
+  }
+  lastNudge = { index: selected, at: now }
+  render()
+}
+
+document.addEventListener('keydown', (event) => {
+  const command = event.metaKey || event.ctrlKey
+  const key = event.key.toLowerCase()
+  const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName ?? '') && document.activeElement.type !== 'checkbox'
+  if (command && key === 's') {
+    event.preventDefault()
+    document.activeElement?.blur?.()
+    return save()
+  }
+  if (typing) {
+    if (event.key === 'Escape') document.activeElement.blur()
+    return
+  }
+  if (command && key === 'z') {
+    event.preventDefault()
+    return event.shiftKey ? redo() : undo()
+  }
+  if (command && key === 'y') {
+    event.preventDefault()
+    return redo()
+  }
+  if (command && key === 'd') {
+    event.preventDefault()
+    return duplicate()
+  }
+  if (command) return
+  if (event.key === 'Escape') return select(-1)
+  if (event.key === 'Tab' && overlay.labels.length) {
+    event.preventDefault()
+    const n = overlay.labels.length
+    return select(selected < 0 ? 0 : (selected + (event.shiftKey ? -1 : 1) + n) % n)
+  }
+  if (selected < 0) return
+  const step = event.shiftKey ? 1 : 0.1
+  const moves = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }
+  if (moves[event.key]) {
+    event.preventDefault()
+    return nudge(...moves[event.key])
+  }
+  if (event.key === 'Delete' || event.key === 'Backspace') {
+    event.preventDefault()
+    return remove()
+  }
+  if (key === 'f') $('fit').click()
+})
+
+// ── The picture's pixels: fitting a box to its words, and the color around a box ──
+
+const pixelCache = new Map()
+
+function pixelsOf(index) {
+  if (!pixelCache.has(index)) {
+    const entry = {}
+    entry.promise = (async () => {
+      try {
+        const image = new Image()
+        image.src = info.images[index].url
+        await image.decode()
+        const canvas = document.createElement('canvas')
+        canvas.width = image.naturalWidth
+        canvas.height = image.naturalHeight
+        const context = canvas.getContext('2d', { willReadFrequently: true })
+        context.drawImage(image, 0, 0)
+        entry.value = { width: canvas.width, height: canvas.height, data: context.getImageData(0, 0, canvas.width, canvas.height).data }
+      } catch {
+        entry.value = null // a picture served from elsewhere can't be read
+      }
+      return entry.value
+    })()
+    pixelCache.set(index, entry)
+  }
+  return pixelCache.get(index).promise
+}
+
+function boxInPixels(label, pixels, grow = 0) {
+  const { width, height } = pixels
+  return {
+    left: clamp(Math.floor(((label.x - label.w / 2) / 100) * width) - grow, 0, width - 1),
+    right: clamp(Math.ceil(((label.x + label.w / 2) / 100) * width) + grow, 0, width - 1),
+    top: clamp(Math.floor(((label.y - label.h / 2) / 100) * height) - grow, 0, height - 1),
+    bottom: clamp(Math.ceil(((label.y + label.h / 2) / 100) * height) + grow, 0, height - 1),
+  }
+}
+
+/** The middle color of a box's own edge: what a box drawn around words mostly stands on. */
+function edgeColor(pixels, { left, right, top, bottom }) {
+  const { width, data } = pixels
+  const channels = [[], [], []]
+  const take = (x, y) => {
+    const i = (y * width + x) * 4
+    channels[0].push(data[i])
+    channels[1].push(data[i + 1])
+    channels[2].push(data[i + 2])
+  }
+  for (let x = left; x <= right; x++) {
+    take(x, top)
+    take(x, bottom)
+  }
+  for (let y = top; y <= bottom; y++) {
+    take(left, y)
+    take(right, y)
+  }
+  return channels.map((values) => values.sort((a, b) => a - b)[values.length >> 1])
+}
+
+function groundOf(label, pixels) {
+  return edgeColor(pixels, boxInPixels(label, pixels, 2))
+}
+
+/**
+ * Shrink or grow a box to the words inside it, with a margin, so a covering label hides them whole.
+ *
+ * The words are the marks inside the box that differ from the color of its edge. A box drawn around
+ * words leaves them whole, while a line or an icon next to them runs on past it: so a mark the box's
+ * edge cuts is left out, unless it sits level with the others, as a letter the box cut through does.
+ */
+async function fitToWords(label, { quiet = false } = {}) {
+  if (!(label.w > 0 && label.h > 0)) return false
+  const pixels = await pixelsOf(picture)
+  if (!pixels) {
+    if (!quiet) toast("This picture can't be read here, so a box can't fit itself to it.", true)
+    return false
+  }
+  const box = boxInPixels(label, pixels)
+  const ground = edgeColor(pixels, box)
+  const { width, height, data } = pixels
+  const w = box.right - box.left + 1
+  const h = box.bottom - box.top + 1
+  const ink = new Uint8Array(w * h)
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = ((box.top + y) * width + box.left + x) * 4
+      const distance = Math.abs(data[i] - ground[0]) + Math.abs(data[i + 1] - ground[1]) + Math.abs(data[i + 2] - ground[2])
+      if (distance > INK) ink[y * w + x] = 1
+    }
+  }
+  const marks = marksOf(ink, w, h).filter((mark) => mark.area >= 3)
+  const cut = (mark) => mark.left === 0 || mark.top === 0 || mark.right === w - 1 || mark.bottom === h - 1
+  let words = marks.filter((mark) => !cut(mark))
+  if (words.length) {
+    const top = Math.min(...words.map((mark) => mark.top))
+    const bottom = Math.max(...words.map((mark) => mark.bottom))
+    for (const mark of marks) {
+      const level = Math.min(bottom, mark.bottom) - Math.max(top, mark.top) + 1
+      if (cut(mark) && level >= 0.6 * (mark.bottom - mark.top + 1)) words.push(mark)
+    }
+  } else words = marks
+  if (!words.length) {
+    if (!quiet) toast('No words inside this box to fit it to.', true)
+    return false
+  }
+  // A margin about as the boxes measured by hand have it: some of a letter's height, and a little more.
+  const tallest = Math.max(...words.map((mark) => mark.bottom - mark.top + 1))
+  const margin = Math.max(2, Math.round(tallest * 0.12 + width * 0.0015))
+  const left = clamp(box.left + Math.min(...words.map((mark) => mark.left)) - margin, 0, width)
+  const right = clamp(box.left + Math.max(...words.map((mark) => mark.right)) + 1 + margin, 0, width)
+  const top = clamp(box.top + Math.min(...words.map((mark) => mark.top)) - margin, 0, height)
+  const bottom = clamp(box.top + Math.max(...words.map((mark) => mark.bottom)) + 1 + margin, 0, height)
+  label.x = round(((left + right) / 2 / width) * 100)
+  label.y = round(((top + bottom) / 2 / height) * 100)
+  label.w = round(((right - left) / width) * 100)
+  label.h = round(((bottom - top) / height) * 100)
+  return true
+}
+
+/** Each connected mark in a mask, a letter or part of one, as its bounds and its size in pixels. */
+function marksOf(ink, w, h) {
+  const seen = new Uint8Array(w * h)
+  const stack = new Int32Array(w * h)
+  const marks = []
+  for (let start = 0; start < w * h; start++) {
+    if (!ink[start] || seen[start]) continue
+    let depth = 0
+    stack[depth++] = start
+    seen[start] = 1
+    const mark = { left: w, right: -1, top: h, bottom: -1, area: 0 }
+    while (depth) {
+      const at = stack[--depth]
+      const x = at % w
+      const y = (at - x) / w
+      mark.area++
+      if (x < mark.left) mark.left = x
+      if (x > mark.right) mark.right = x
+      if (y < mark.top) mark.top = y
+      if (y > mark.bottom) mark.bottom = y
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const nx = x + dx
+          const ny = y + dy
+          if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue
+          const next = ny * w + nx
+          if (ink[next] && !seen[next]) {
+            seen[next] = 1
+            stack[depth++] = next
+          }
+        }
+      }
+    }
+    marks.push(mark)
+  }
+  return marks
+}
+
+// ── Saving ──────────────────────────────────────────────────────────────────
+
+async function save(force = false) {
+  if (!info) return
+  const { ok, status, data } = await api('/api/save', { overlay, version, force })
+  if (ok) {
+    version = data.version
+    saved = snapshot()
+    info.pageLinks = data.pageLinks
+    hideBanner()
+    render()
+    return toast(data.unchanged ? 'Nothing changed in the file.' : `Saved to ${info.file}`)
+  }
+  if (status === 409) {
+    return showBanner(`${data.error} Reload it, losing what was drawn here since, or save over it.`, [
+      ['Reload from the file', () => load().then(hideBanner)],
+      ['Save over it', () => save(true)],
+    ])
+  }
+  toast(data.error || 'Could not save.', true)
+}
+
+function showBanner(message, actions) {
+  const banner = $('banner')
+  banner.replaceChildren(
+    Object.assign(document.createElement('span'), { textContent: message }),
+    ...actions.map(([text, run]) => Object.assign(document.createElement('button'), { type: 'button', className: 'button', textContent: text, onclick: run })),
+  )
+  banner.classList.add('shown')
+}
+
+function hideBanner() {
+  $('banner').classList.remove('shown')
+}
+
+// ── The rest ────────────────────────────────────────────────────────────────
+
+let translateTimer = 0
+function translateSoon(text) {
+  clearTimeout(translateTimer)
+  translateTimer = setTimeout(async () => {
+    const { ok, data } = await api('/api/translate', { texts: [text] })
+    if (!ok) return
+    for (const [code, table] of Object.entries(data)) translations[code] = { ...translations[code], ...table }
+    render()
+  }, 350)
+}
+
+let toastTimer = 0
+function toast(message, error = false) {
+  const element = $('toast')
+  element.textContent = message
+  element.classList.toggle('error', error)
+  element.classList.add('shown')
+  clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => element.classList.remove('shown'), error ? 4200 : 2200)
+}
+
+function layout() {
+  const viewport = $('viewport')
+  const room = viewport.clientWidth - 48
+  stage.style.width = `${Math.max(200, room * zoom)}px`
+  render()
+}
+
+window.addEventListener('resize', layout)
+window.addEventListener('beforeunload', (event) => {
+  if (info && snapshot() !== saved) event.preventDefault()
+})
+// A dev server started after the labeller is found the next time this window is looked at.
+window.addEventListener('focus', async () => {
+  if (!info) return
+  const { ok, data } = await api('/api/links')
+  if (ok) {
+    info.pageLinks = data.pageLinks
+    renderPanel()
+  }
+})
+$('picture').addEventListener('load', () => render())
+
+layout()
+load()
+</script>
+</body>
+</html>

@@ -850,6 +850,13 @@ async function main() {
     return
   }
 
+  // Handle label command (dynamic import — reads the site through @uniweb/build)
+  if (command === 'label') {
+    const { label } = await importProjectCommand('./commands/label.js')
+    await label(args.slice(1))
+    return
+  }
+
   // Handle doctor command (dynamic import — depends on @uniweb/build)
   if (command === 'doctor') {
     const { doctor } = await importProjectCommand('./commands/doctor.js')
@@ -2548,6 +2555,7 @@ ${colors.bright}Commands:${colors.reset}
   mcp                Tools for an AI agent in a host that runs them (Claude Desktop, Claude Code)
   org <cmd>          The organizations you belong to: list, create
   inspect <path>     Inspect parsed content shape of a markdown file or folder
+  label [file]       Place a picture's words over it, in a browser on this machine
   docs               Generate component documentation
   families           List the standard section families (for meta.js family:)
   compute run <f#fn> Run a compute function locally, under the rules it runs by

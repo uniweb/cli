@@ -44,6 +44,7 @@ site/
 | `nav` | a navigation menu or link tree | a list |
 | `form` | a form an author designs | a list of controls |
 | `scene` | a Scene Composition Format document | flat |
+| `overlay` | the words drawn over a picture, in the page's language (kit's `LabeledImage`) | flat; a block holds one, so `single: true` |
 
 Each type's fields, with what each is for: https://github.com/uniweb/schemas/tree/main/src/standard. A record holds only its type's fields: `uniweb validate` reports one the type lacks, a push refuses it, and a build notes it and leaves it out, so a component receives the same record on a static host and a hosted site. What a site says differently (a topic) goes in a field the type has (`tags`), or the type is not the one.
 
