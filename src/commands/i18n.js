@@ -1736,6 +1736,11 @@ async function runWords(siteRoot, config, args) {
         left.push({ ...item, reason: `it holds a \`${item.key}\` block of its own` })
         continue
       }
+      // A block under an item's heading is the item's: a second block would leave the author's in place.
+      if (item.inItem) {
+        left.push({ ...item, reason: `its \`${item.key}\` block is under “${item.inItem}”, which reads it as that item's: move it above the section's first item heading` })
+        continue
+      }
       const file = join(siteRoot, item.file)
       const result = withWords(await readFile(file, 'utf8'), item.key, item.words)
       if (result.text) {
@@ -1768,13 +1773,19 @@ async function runWords(siteRoot, config, args) {
   for (const item of found) {
     const what = item.hasBlock
       ? `its \`${item.key}\` block leaves out ${item.words.length}`
-      : `no \`${item.key}\` block`
+      : item.inItem
+        ? `its \`${item.key}\` block is under “${item.inItem}”, so it is that item's, and the section reads none of it`
+        : `no \`${item.key}\` block`
     log(`  ${item.file} ${colors.dim}(${item.type})${colors.reset} — ${what}: ${names(item.words)}`)
   }
-  const bare = found.filter((item) => !item.hasBlock).length
+  const bare = found.filter((item) => !item.hasBlock && !item.inItem).length
+  const misplaced = found.filter((item) => item.inItem).length
   log(
     `\nA section shows each of these in the foundation's language on every page, ${config.locales.join(', ')} included, if it draws it.`
   )
+  if (misplaced) {
+    log(`${colors.dim}A block after an item's heading is that item's: move it above the section's first item heading, where the section reads it as its own.${colors.reset}`)
+  }
   if (bare) {
     log(`${colors.dim}uniweb i18n words --write writes its type's words into the ${bare} section${bare === 1 ? '' : 's'} that hold${bare === 1 ? 's' : ''} no block.${colors.reset}`)
   }

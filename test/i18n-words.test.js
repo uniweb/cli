@@ -82,6 +82,29 @@ test('--write writes the words into the section as its own block, before its fir
   }
 })
 
+test('a block under an item’s heading is named where it is, and --write leaves it for its author to move', () => {
+  // A block written at the end of a section with items is the last item's, so the section reads none
+  // of it. ⛔ Until 2026-11-22 it was listed as holding no `labels` block, and --write wrote a second one.
+  const { root, site } = project()
+  try {
+    const file = join(site, 'pages/home/3-end.md')
+    const text = '---\ntype: Catalog\n---\n\n# At the end\n\n### One & two\n\nThe first.\n\n```yaml:labels\nsearch: Find\nempty: Nothing\n```\n'
+    writeFileSync(file, text)
+    const plain = run(['i18n', 'words', '--target', site])
+    assert.equal(plain.code, 0, plain.err)
+    assert.match(plain.out, /pages\/home\/3-end\.md .*Catalog.* its `labels` block is under “One & two”, so it is that item's/)
+    assert.match(plain.out, /move it above the section's first item heading/)
+
+    const wrote = JSON.parse(run(['i18n', 'words', '--write', '--json', '--target', site]).out)
+    assert.deepEqual(wrote.written.map((s) => s.file), ['pages/home/1-catalog.md'])
+    assert.deepEqual(wrote.left.map((s) => s.file), ['pages/home/3-end.md'])
+    assert.match(wrote.left[0].reason, /under “One & two”/)
+    assert.equal(readFileSync(file, 'utf8'), text)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
 test('a site in one language needs none of it', () => {
   const { root, site } = project({ languages: '[en]' })
   try {
