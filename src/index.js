@@ -1067,6 +1067,15 @@ async function main() {
     await exitWhenDrained(result?.exitCode ?? 0)
   }
 
+  // Handle mcp — tools for an AI agent, served over the Model Context Protocol to a host that
+  // starts this command and talks to it over standard input and output. Runs anywhere; in a
+  // project it leaves out the tools whose work the project's files already do.
+  if (command === 'mcp') {
+    const { mcp } = await import('./commands/mcp.js')
+    const result = await mcp(args.slice(1))
+    await exitWhenDrained(result?.exitCode ?? 0)
+  }
+
   // Handle org command (new-backend orgs/units — publish-scope management)
   if (command === 'org') {
     const { org } = await import('./commands/org.js')
@@ -2479,6 +2488,25 @@ ${colors.bright}Project-local installs:${colors.reset}
   When run from a project-local CLI (in node_modules), it aligns the
   project to that pinned version — bump \`uniweb\` in package.json (or use
   \`npx uniweb@latest update\`) to align to something newer.
+`,
+    mcp: `
+${colors.cyan}${colors.bright}uniweb mcp${colors.reset} ${colors.dim}— Tools for an AI agent, over the Model Context Protocol${colors.reset}
+
+${colors.bright}Usage:${colors.reset}
+  uniweb mcp [options]
+
+A host that runs tools for its agent, such as Claude Desktop or Claude Code, starts
+this command and talks to it over standard input and output. The tools work on your
+sites as you, in your CLI's workspace. Sign in first with ${colors.cyan}uniweb login${colors.reset}.
+
+Add it to a host as a local server whose command is:  uniweb mcp
+
+In a project, whose files are the site's copy, the tools whose work the files already
+do are left out: an agent there edits the files and pushes.
+
+${colors.bright}Options:${colors.reset}
+  --org <@handle>     Work in that workspace for this run
+  --personal          Work in your personal workspace for this run
 `
   }
 
@@ -2517,6 +2545,7 @@ ${colors.bright}Commands:${colors.reset}
   forget             Forget a backend, or --all to make a copied project a new one
   site <cmd>         The sites in a workspace: list, unpublish, delete
   promote <cmd>      A site's Promote: its posts and ads, getting found, and the accounts
+  mcp                Tools for an AI agent in a host that runs them (Claude Desktop, Claude Code)
   org <cmd>          The organizations you belong to: list, create
   inspect <path>     Inspect parsed content shape of a markdown file or folder
   docs               Generate component documentation
