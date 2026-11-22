@@ -263,7 +263,7 @@ empty: No solutions found
 ```
 ````
 
-The runtime fills no default into a data block (`uniweb guide data`), so the component falls back to the same `labels.js` for a section written without the block. A later release that changes a default changes only the sections that never wrote their own.
+The runtime fills no default into a data block (`uniweb guide data`), so the component falls back to the same `labels.js` for a section written without the block. A later release that changes a default changes only the sections that never wrote their own. Only words a section holds are translated, so on a site with other languages, such a section shows the defaults on every language's page, and the build says nothing: write the block in each section of a type whose words a visitor reads.
 
 ## Composition
 
