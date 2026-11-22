@@ -478,7 +478,8 @@ async function generateComponentDocs(args) {
     info('Generating documentation...')
 
     const result = await generateDocs(foundationDir, {
-      output: join(outputDir, options.output),
+      // An absolute --output is the file itself; a relative one is in the project or the foundation.
+      output: resolve(outputDir, options.output),
       fromSource: options.fromSource
     })
 
