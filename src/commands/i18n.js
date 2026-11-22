@@ -1691,17 +1691,16 @@ async function discoverFiles(dir) {
 }
 
 /**
- * Show help for i18n commands
- */
-/**
- * The words sections draw that their content doesn't hold.
+ * The words a section's type declares that the section's content doesn't hold.
  *
  * A section type's own words (a search box's placeholder, "No results") are content: the type
  * declares them with their defaults, and a section writes the block to say its own. Only what a
  * section holds is translated, so a section that leaves the block out shows the foundation's words
- * on every language's page (`@uniweb/build/i18n::sectionsMissingWords`). `--write` writes the
- * defaults into each section that holds no block, as its block, so they are translated with the
- * page. A section that holds a block chose its words, so it is named and left as it is.
+ * it draws on every language's page (`@uniweb/build/i18n::sectionsMissingWords`). A type declares
+ * its words once for all its layouts, so a section whose layout draws none of them is listed too,
+ * and needs no block. `--write` writes the defaults into each section that holds no block, as its
+ * block, so they are translated with the page. A section that holds a block chose its words, so it
+ * is named and left as it is.
  */
 async function runWords(siteRoot, config, args) {
   const outputJson = args.includes('--json')
@@ -1709,8 +1708,9 @@ async function runWords(siteRoot, config, args) {
   const all = args.includes('--all')
   const { sectionsMissingWords, withWords } = await import('@uniweb/build/i18n')
   const every = config.locales.length ? await sectionsMissingWords(siteRoot) : []
-  // A section with no block shows every word its type draws in the foundation's language. One whose
-  // block leaves words out may leave out only what it doesn't draw, which no check can see.
+  // A section with no block shows each of its type's words that it draws in the foundation's
+  // language. One whose block leaves words out may leave out only what it doesn't draw, which no
+  // check can see.
   const found = all ? every : every.filter((item) => !item.hasBlock)
   const partial = every.length - every.filter((item) => !item.hasBlock).length
 
@@ -1764,7 +1764,7 @@ async function runWords(siteRoot, config, args) {
     const shown = words.slice(0, 6).map((w) => w.name).join(', ')
     return words.length > 6 ? `${shown} and ${words.length - 6} more` : shown
   }
-  log(`\n${colors.cyan}Words sections draw that their content doesn't hold${colors.reset}\n`)
+  log(`\n${colors.cyan}Words their type declares that sections don't hold${colors.reset}\n`)
   for (const item of found) {
     const what = item.hasBlock
       ? `its \`${item.key}\` block leaves out ${item.words.length}`
@@ -1795,13 +1795,16 @@ async function noteMissingWords(siteRoot, config) {
     const { sectionsMissingWords } = await import('@uniweb/build/i18n')
     const bare = (await sectionsMissingWords(siteRoot)).filter((item) => !item.hasBlock).length
     if (bare) {
-      log(`\n${colors.yellow}⚠${colors.reset} ${bare} section${bare === 1 ? ' holds' : 's hold'} none of the words ${bare === 1 ? 'its' : 'their'} type draws, so ${bare === 1 ? 'it shows' : 'they show'} them in the foundation's language on every page: uniweb i18n words`)
+      log(`\n${colors.yellow}⚠${colors.reset} ${bare} section${bare === 1 ? ' holds' : 's hold'} none of the words ${bare === 1 ? 'its' : 'their'} type declares, so any ${bare === 1 ? 'it draws' : 'they draw'} show in the foundation's language on every page: uniweb i18n words`)
     }
   } catch {
     // a foundation that doesn't read is reported by the commands that build it
   }
 }
 
+/**
+ * Show help for i18n commands
+ */
 function showHelp() {
   log(`
 ${colors.cyan}${colors.bright}Uniweb i18n${colors.reset}
