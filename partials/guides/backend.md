@@ -6,6 +6,8 @@ On-demand guide (`uniweb guide backend`); AGENTS.md is assumed read. For a site 
 npm install @uniweb/api      # in the FOUNDATION, beside @uniweb/kit — and in the site, if it has a $devBackend mock
 ```
 
+**Two places hold a site's data, and they share nothing.** *The engine*, which this guide means by the backend, is the site's own: its members, the entries they and the site's staff create, its store. *Where the site is published*, the backend you are logged in to, keeps the site's content: its pages and its `records/` files. A `records/` file never reaches the engine, whatever its type and whatever `uniweb publish` reports: `@uniweb/api` never lists it, no member can edit it, and the store can't sell it. Anything the engine works with is an entry created through `@uniweb/api` (Writing, below) or by the owner.
+
 ## Ask before you draw
 
 ```jsx
@@ -132,6 +134,7 @@ offeringState(offering, store)   // 'owned' · 'take' (a free one-off) · 'not-r
 await checkout(offering)         // sends the buyer to pay; a free one-off is held at once: { url: null, held: true }
 ```
 
+- **What the store sells is an entry of the engine**: a course or a membership your admin area creates with `useEntityWriter` or `useEntityForm`, or one the owner adds. Never a `records/` file: that is the site's content, which the engine never holds, so the owner finds nothing to put on sale.
 - The owner sets the offerings, and connects their own Stripe account, in the Solution Owner Console. `price` is in the currency's smallest unit. Nobody signed in → `absent`: the store is a signed-in member's to read.
 - After paying, the buyer lands on `successUrl` (this page by default). The purchase is written when the payment's notice arrives, so the page there calls `refresh()` until the offering reads `owned`.
 - A purchase lets the buyer read the record, and through it what its `sold_with` references point to: `useEntity({ schema: '@/lesson', uuid, via: course.uuid })`.
