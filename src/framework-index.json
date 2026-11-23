@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-11-22T23:41:06.862Z",
+  "generatedAt": "2026-11-23T02:57:13.288Z",
   "packages": {
     "@uniweb/agent": {
       "version": "0.1.2"
@@ -9,7 +9,7 @@
       "version": "1.7.6"
     },
     "@uniweb/build": {
-      "version": "1.24.11"
+      "version": "1.24.12"
     },
     "@uniweb/content-reader": {
       "version": "1.5.12"
