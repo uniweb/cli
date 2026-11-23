@@ -248,7 +248,10 @@ test('clone forwards the workspace it was told to work in to the delegated pull'
 
 test('⭐ a clone outside git starts its history at a sync point — the site as the backend has it', async () => {
   const dir = tmpCwd()
-  const prior = { global: process.env.GIT_CONFIG_GLOBAL, nosys: process.env.GIT_CONFIG_NOSYSTEM }
+  const prior = { global: process.env.GIT_CONFIG_GLOBAL, nosys: process.env.GIT_CONFIG_NOSYSTEM, server: process.env.UNIWEB_SERVER }
+  // The origin the history is asserted against, whatever backend the person running this is logged in to.
+  const origin = 'https://uniweb.app'
+  process.env.UNIWEB_SERVER = origin
   process.env.GIT_CONFIG_GLOBAL = join(dir, 'gitconfig')
   writeFileSync(process.env.GIT_CONFIG_GLOBAL, '[user]\n\tname = t\n\temail = t@t\n')
   process.env.GIT_CONFIG_NOSYSTEM = '1'
@@ -268,7 +271,6 @@ test('⭐ a clone outside git starts its history at a sync point — the site as
     const project = join(dir, 'solo')
     const repo = repoOf(join(project, 'site'))
     assert.ok(repo?.head, 'the clone is a repository with a first commit')
-    const origin = 'https://uniweb.app'
     assert.equal(historySyncPoint(repo, { origin, siteUuid: 'SITE-1' }), repo.head, 'its first commit is a sync point')
     assert.equal(readSyncPoint(join(project, 'site'), origin), repo.head, 'and this copy keeps it as its own')
     assert.match(execFileSync('git', ['show', '--stat', '--format=', 'HEAD'], { cwd: project, encoding: 'utf8' }), /site\/pages\/home\/hello\.md/)
@@ -277,6 +279,8 @@ test('⭐ a clone outside git starts its history at a sync point — the site as
     else process.env.GIT_CONFIG_GLOBAL = prior.global
     if (prior.nosys === undefined) delete process.env.GIT_CONFIG_NOSYSTEM
     else process.env.GIT_CONFIG_NOSYSTEM = prior.nosys
+    if (prior.server === undefined) delete process.env.UNIWEB_SERVER
+    else process.env.UNIWEB_SERVER = prior.server
     rmSync(dir, { recursive: true, force: true })
   }
 })
