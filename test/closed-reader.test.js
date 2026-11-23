@@ -11,7 +11,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { spawn, spawnSync } from 'node:child_process'
-import { existsSync, mkdtempSync, mkdirSync, readdirSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, mkdirSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -147,4 +147,25 @@ test('a socket reader gone, ENOTCONN or ECONNRESET, is a reader gone; any other 
   const other = raise('EIO')
   assert.notEqual(other.status, 0, 'EIO was swallowed')
   assert.match(other.stderr, /write EIO/)
+})
+
+// ⛔ Until 2026-11-23 the check left a pipe in the stat buffer Node shares with `fs.realpathSync`,
+// which then stopped resolving part way: a module imported after a relayed child, through a
+// symlink (pnpm's layout), loaded by its symlinked path, a second copy beside the one already
+// loaded. `uniweb build 2>&1 | tail` drew React twice and prerendered no page that called a hook.
+test('after a relayed child, a module behind a symlink still loads by its real path', () => {
+  const dir = join(work, 'symlinked')
+  mkdirSync(join(dir, 'real'), { recursive: true })
+  for (const name of ['a', 'b']) writeFileSync(join(dir, 'real', `${name}.mjs`), 'export const url = import.meta.url\n')
+  symlinkSync('real', join(dir, 'link'))
+  const at = (name) => JSON.stringify(pathToFileURL(join(dir, 'link', `${name}.mjs`)).href)
+  const body = `
+    const { runRelayed } = await import(${JSON.stringify(READER)})
+    await import(${at('a')})
+    await runRelayed(process.execPath, ['-e', ''])
+    const { url } = await import(${at('b')})
+    process.stdout.write(url)`
+  const r = spawnSync(process.execPath, ['--input-type=module', '-e', body], { cwd: work, encoding: 'utf8' })
+  assert.equal(r.status, 0, r.stderr)
+  assert.equal(r.stdout, pathToFileURL(join(realpathSync(dir), 'real', 'b.mjs')).href)
 })

@@ -30,9 +30,17 @@ export function outliveTheReader() {
 
 // A terminal or a file can't stop reading, and a child handed one directly keeps its colours and
 // the exact order of its two streams.
+//
+// ⛔ `bigint`, so the stat lands in a buffer of its own. A plain stat leaves its result in the
+// buffer Node shares with `fs.realpathSync`, which, on a path part it has already found real,
+// stops resolving when that buffer last held a pipe or a socket (Node 24). With stderr a pipe,
+// every import after this one came back by its symlinked path: `@uniweb/build` from pnpm's link
+// next to the CLI, the runtime and React through the hoisted `.pnpm/node_modules`, a second React
+// beside the foundation's, and `uniweb build 2>&1 | tail` prerendered no page that called a hook
+// ("Invalid hook call", measured 2026-11-23).
 function readerCanLeave(fd) {
   try {
-    const at = fstatSync(fd)
+    const at = fstatSync(fd, { bigint: true })
     return at.isFIFO() || at.isSocket()
   } catch {
     return false
