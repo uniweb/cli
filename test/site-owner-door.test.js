@@ -45,7 +45,7 @@ test('`site admin <uuid>` asks for the manage door, in the workspace named, and 
   assert.equal(r.exitCode, 0, r.output)
   assert.deepEqual(backend.doors().map((d) => [d.method, d.path, d.workspace]), [['POST', `/dev/site/manage/${UUID}`, '@studio']])
   assert.deepEqual(opened, [SECRET])
-  assert.match(r.output, /Opened the administration of “blog” \(01a116cf[^)]*\)’s backend in your browser/)
+  assert.match(r.output, /Opened the administration of “blog” \(01a116cf[^)]*\)’s backend in your default browser/)
   assert.doesNotMatch(r.output, /ONE-TIME-SECRET/, 'the sign-in is never printed')
 })
 
@@ -54,7 +54,8 @@ test('`site visit <uuid>` asks for the visit door', async () => {
   const r = await run('visit', ['visit', UUID], backend, async () => true)
   assert.equal(r.exitCode, 0, r.output)
   assert.deepEqual(backend.doors().map((d) => d.path), [`/dev/site/visit/${UUID}`])
-  assert.match(r.output, /Opened “blog” \(01a116cf[^)]*\) in your browser, signed in as its owner/)
+  assert.match(r.output, /Opened “blog” \(01a116cf[^)]*\) in your default browser, signed in as its owner/)
+  assert.match(r.output, /Only that browser is signed in/)
 })
 
 test('with no browser to open, it says so, exits 1, and still prints no address', async () => {

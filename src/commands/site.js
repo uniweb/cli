@@ -555,7 +555,10 @@ export async function siteOwnerDoor(args, verb, { open } = {}) {
     say.dim(`uniweb site ${verb}${positionals(args)[1] ? ` ${target.uuid}` : ''}`)
     return { exitCode: 1 }
   }
-  say.ok(`Opened ${what(label)} in your browser, signed in as its owner.`)
+  say.ok(`Opened ${what(label)} in your default browser, signed in as its owner.`)
+  // ⭐ An agent drives a browser of its own, or a person may have several profiles: the sign-in
+  // was handed to the system's default browser only, and its address is never printed.
+  say.dim('Only that browser is signed in: another browser or profile, such as one an agent drives, is not.')
   return { exitCode: 0 }
 }
 
