@@ -41,7 +41,7 @@ await writer.move(itemId, { after: previousItemId })            // 'first', 'las
 await writer.remove(itemId)
 ```
 
-- `section` is required on `create`: an entity has several, and a rule declared on one (insert-only) doesn't reach an item that landed in another.
+- `section` is required on `create`: an entity has several, and a rule declared on one (insert-only) doesn't reach an item that landed in another. A schema written with flat `fields:` has one section, named `brief`: `create(data, { section: 'brief' })`.
 - Ordering is the server's; never compute an order number.
 - `writer.conflict` is reported, not retried — a retry would overwrite a change nobody looked at. Tell the person.
 
