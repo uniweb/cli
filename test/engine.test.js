@@ -211,3 +211,13 @@ test('a download that stops says so, and the next run carries on from there', as
   assert.equal(backend.downloads().at(-1).range, 'bytes=1500-')
   assert.deepEqual(readFileSync(join(dir, 'eng', big)), FILES[big])
 })
+
+test('paths are shown from here when under here, else from home, else whole', async () => {
+  const { shown } = await import('../src/commands/engine.js')
+  const { homedir } = await import('node:os')
+  assert.equal(shown(process.cwd()), '.')
+  assert.equal(shown(join(process.cwd(), 'eng', 'AGENTS.md')), join('eng', 'AGENTS.md'))
+  const elsewhere = join(homedir(), 'nowhere-under-cwd-xyz', 'AGENTS.md')
+  if (!elsewhere.startsWith(process.cwd())) assert.equal(shown(elsewhere), join('~', 'nowhere-under-cwd-xyz', 'AGENTS.md'))
+  assert.equal(shown('/opt/engine'), '/opt/engine')
+})

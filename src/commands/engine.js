@@ -27,7 +27,8 @@
 import { createHash } from 'node:crypto'
 import { createReadStream, createWriteStream, existsSync, statSync } from 'node:fs'
 import { mkdir, rename, rm } from 'node:fs/promises'
-import { dirname, isAbsolute, relative, resolve } from 'node:path'
+import { homedir } from 'node:os'
+import { dirname, isAbsolute, relative, resolve, sep } from 'node:path'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 
@@ -274,12 +275,21 @@ export async function engine(args = [], deps = {}) {
     fetched++
   }
 
-  const where = relative(process.cwd(), dir) || '.'
+  const where = shown(dir)
   if (fetched === 0) say.ok(`The engine in ${where} is up to date${version ? ` (${version})` : ''}.`)
   else say.ok(`Wrote ${fetched} file${fetched === 1 ? '' : 's'} to ${where}${kept ? `, kept ${kept} unchanged` : ''}.`)
   const guide = checked.files.find((f) => f.path === 'AGENTS.md') ?? checked.files.find((f) => f.path === 'README.md')
-  if (guide) console.log(`Next: follow ${relative(process.cwd(), guide.target) || guide.path} to start it.`)
+  if (guide) console.log(`Next: follow ${shown(guide.target)} to start it.`)
   return { exitCode: 0 }
+}
+
+/** A path as a person reads it: from here when it is under here, else from home, else whole. */
+export function shown(path) {
+  const here = relative(process.cwd(), path)
+  if (here === '') return '.'
+  if (!here.startsWith('..') && !isAbsolute(here)) return here
+  const home = homedir()
+  return path === home ? '~' : path.startsWith(home + sep) ? `~${sep}${path.slice(home.length + 1)}` : path
 }
 
 function anyPresent(files) {
