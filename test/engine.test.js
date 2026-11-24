@@ -43,7 +43,7 @@ function engineBackend({ files = FILES, refuse, expireOnce = false, corrupt = nu
     }
     if (u.pathname.startsWith('/file/')) {
       const path = decodeURIComponent(u.pathname.slice('/file/'.length))
-      if (expireOnce && u.searchParams.get('n') === '1') return new Response('expired', { status: 403 })
+      if (expireOnce && u.searchParams.get('n') === '1') return new Response('expired', { status: expireOnce === true ? 403 : expireOnce })
       let bytes = files[path]
       if (corrupt === path) bytes = Buffer.from(bytes).fill(0)
       const range = /^bytes=(\d+)-$/.exec(init.headers?.Range ?? '')
@@ -120,11 +120,13 @@ test('a file that does not match its SHA-256 is never kept', async () => {
   assert.ok(!existsSync(join(dir, 'eng', 'compose.yaml.part')))
 })
 
-test('an expired address is asked for again, once', async () => {
-  const backend = engineBackend({ expireOnce: true })
-  const { exitCode, output } = await run(['get', 'eng'], backend)
-  assert.equal(exitCode, 0, output)
-  assert.equal(backend.seen.filter((r) => r.path === '/dev/engine').length, 2)
+test('an expired address (403), or a file a new release replaced (404), is asked for again, once', async () => {
+  for (const status of [403, 404]) {
+    const backend = engineBackend({ expireOnce: status })
+    const { exitCode, output } = await run(['get', 'eng'], backend)
+    assert.equal(exitCode, 0, output)
+    assert.equal(backend.seen.filter((r) => r.path === '/dev/engine').length, 2)
+  }
 })
 
 test('a path that leaves the directory is refused before anything is written', async () => {

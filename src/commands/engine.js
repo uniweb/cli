@@ -141,7 +141,9 @@ async function download(file, { fetchImpl, progress }) {
 
   if (have < file.size) {
     const res = await fetchImpl(file.url, have > 0 ? { headers: { Range: `bytes=${have}-` } } : {})
-    if (res.status === 401 || res.status === 403 || res.status === 410) return 'expired'
+    // 403: the address lapsed or its signature doesn't hold; 404: a new release came out since the
+    // list. Either way, ask the backend again (backend, 2026-11-24).
+    if (res.status === 401 || res.status === 403 || res.status === 404 || res.status === 410) return 'expired'
     if (res.status !== 200 && res.status !== 206) throw new Error(`${file.path}: HTTP ${res.status}`)
     // A 200 is the whole file: start over.
     const append = res.status === 206 && have > 0
@@ -243,7 +245,8 @@ export async function engine(args = [], deps = {}) {
     try {
       outcome = await download(file, { fetchImpl, progress: progressFor(file) })
       if (outcome === 'expired' && !refreshed) {
-        // An address lasts an hour: ask once for fresh ones and carry on from this file.
+        // An address lasts an hour, and a release can change under it: ask once for a fresh list
+        // and carry on from this file.
         refreshed = true
         listing = await askForListing(client)
         if (listing.exitCode != null) return listing
