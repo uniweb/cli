@@ -55,7 +55,7 @@ test('`site visit <uuid>` asks for the visit door', async () => {
   assert.equal(r.exitCode, 0, r.output)
   assert.deepEqual(backend.doors().map((d) => d.path), [`/dev/site/visit/${UUID}`])
   assert.match(r.output, /Opened “blog” \(01a116cf[^)]*\) in your default browser, signed in as its owner/)
-  assert.match(r.output, /Only that browser is signed in/)
+  assert.match(r.output, /An agent driving that same browser has the sign-in; a separate browser or profile does not/)
 })
 
 test('with no browser to open, it says so, exits 1, and still prints no address', async () => {
