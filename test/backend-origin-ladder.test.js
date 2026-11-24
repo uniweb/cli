@@ -76,13 +76,15 @@ test('⛔ there is no flag tier — an argument is ignored, not obeyed', () => {
   })
 })
 
-test('an unparseable override falls through instead of winning with a broken value', () => {
+test('an unparseable override stops the command: it neither wins with a broken value nor falls through', () => {
+  // ⛔ Falling through to the login (until 2026-11-24) sent a script's UNIWEB_TOKEN to a
+  // backend it was not aimed at.
   isolated(LOGIN, () => {
     process.env.UNIWEB_SERVER = 'not-a-url'
-    assert.equal(resolveBackendOrigin(), LOGIN)
-    // no scheme: parses as `localhost:` with the origin "null" — must fall through too
+    assert.throws(() => resolveBackendOrigin(), /UNIWEB_SERVER is not an http\(s\) address/)
+    // no scheme: parses as `localhost:` with the origin "null" — refused too
     process.env.UNIWEB_SERVER = 'localhost:8080'
-    assert.equal(resolveBackendOrigin(), LOGIN)
+    assert.throws(() => resolveBackendOrigin(), /UNIWEB_SERVER is not an http\(s\) address/)
   })
 })
 

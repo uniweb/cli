@@ -114,6 +114,20 @@ test('UNIWEB_SERVER outranks the login — the one override, for automation', { 
   assert.equal(backendLine(res.output), A, res.output)
 })
 
+test('a UNIWEB_SERVER that is not an address stops the command; it never falls through to the login', { timeout: 30_000 }, async () => {
+  const { publish } = await verbs()
+  const dir = project({ [A]: site('SITE-A') })
+  for (const bad of ['http://127.0.0.1:undefined', 'localhost:8080']) {
+    const res = await runVerb(dir, publish, ['--dry-run'], {
+      session: { version: 2, current: B, sessions: sessions(B) },
+      env: { UNIWEB_SERVER: bad }
+    })
+    assert.notEqual(res.exitCode, 0, res.output)
+    assert.match(res.output, /UNIWEB_SERVER is not an http\(s\) address/, res.output)
+    assert.equal(res.requests, 0, res.output)
+  }
+})
+
 test('several backends on record: the login decides, for every verb', { timeout: 30_000 }, async () => {
   const { publish, push } = await verbs()
   const dir = project({ [A]: site('SITE-A'), [C]: site('SITE-C') })

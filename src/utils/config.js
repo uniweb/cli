@@ -196,10 +196,19 @@ export function resolveLoginOrigin(flag, args = []) {
  * a per-command flag outranking the login. The verbs lost that flag on 2026-09-21.*
  *
  * @returns {string}
+ * @throws {Error} when UNIWEB_SERVER is set and is not an http(s) address
  */
 export function getRegistryApiBaseUrl() {
+  // ⛔ A set UNIWEB_SERVER that is not an http(s) address stops the command. Read as absent,
+  // it fell through to the login's backend or the default, and a script's UNIWEB_TOKEN went
+  // there instead of where it was aimed (measured 2026-11-24: `http://127.0.0.1:undefined`
+  // sent the token to uniweb.app).
+  const server = process.env.UNIWEB_SERVER
+  if (server && !originOrNull(server)) {
+    throw new Error(`UNIWEB_SERVER is not an http(s) address: ${JSON.stringify(server)}. Set it to one, such as http://localhost:8080, or unset it.`)
+  }
   return (
-    originOrNull(process.env.UNIWEB_SERVER) ||
+    originOrNull(server) ||
     originOrNull(loggedInOrigin()) ||
     getDefaultBackendOrigin()
   )
