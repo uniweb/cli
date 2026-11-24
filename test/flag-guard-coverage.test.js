@@ -39,7 +39,8 @@ const ENTRY = {
   status: 'commands/status.js',
   refresh: 'commands/refresh.js',
   site: 'commands/site.js',
-  dev: 'commands/dev.js'
+  dev: 'commands/dev.js',
+  engine: 'commands/engine.js'
 }
 
 // Accepted everywhere, so never a gap.

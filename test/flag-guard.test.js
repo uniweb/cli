@@ -90,7 +90,8 @@ test('a realistic invocation of every guarded verb passes', () => {
     site: ['delete', '01a116cf-1a07-79f0-86e1-855d3a95e987', '--yes', '--org', '@acme'],
     promote: ['status', '--json', '--site', '01a116cf-1a07-79f0-86e1-855d3a95e987', '--org', '@acme'],
     dev: ['docs', '--port', '5199', '--org', '@acme'],
-    guide: ['content', '--path']
+    guide: ['content', '--path'],
+    engine: ['update', './uniweb-engine']
   }
   for (const [verb, args] of Object.entries(real)) {
     assert.equal(checkFlags(verb, args), null, `${verb} rejected a valid call`)

@@ -156,9 +156,11 @@ function getCliVersion() {
 // install that's the whole point; delegating to the project-local copy
 // would align the project to the version it already has, i.e. a no-op.
 // `start` is here because a project's older CLI may not have it, and its
-// guide describes the CLI that prints it.
+// guide describes the CLI that prints it. `engine` needs no project, and an older
+// project CLI would not know it.
 const STANDALONE_COMMANDS = new Set([
   'create',
+  'engine',
   'clone',
   '--help',
   '-h',
@@ -1080,6 +1082,13 @@ async function main() {
   if (command === 'mcp') {
     const { mcp } = await import('./commands/mcp.js')
     const result = await mcp(args.slice(1))
+    await exitWhenDrained(result?.exitCode ?? 0)
+  }
+
+  // The Application Engine for this machine: files the backend names, written and never run
+  if (command === 'engine') {
+    const { engine } = await import('./commands/engine.js')
+    const result = await engine(args.slice(1))
     await exitWhenDrained(result?.exitCode ?? 0)
   }
 
@@ -2229,6 +2238,22 @@ ${colors.bright}Options:${colors.reset}
   --org @org         Work in @org, instead of the workspace chosen at \`uniweb login\`
   --personal         (or your personal workspace)
 `,
+    engine: `
+${colors.cyan}${colors.bright}uniweb engine${colors.reset} ${colors.dim}— The Application Engine for your machine${colors.reset}
+
+${colors.bright}Usage:${colors.reset}
+  uniweb engine get [<dir>]      (default: uniweb-engine)
+  uniweb engine update [<dir>]   (default: this directory)
+
+Downloads the files that run the Application Engine on this machine, from the backend
+you are logged in to, and writes them into <dir>. Your account must have access, and
+you accept the engine's licence in the Uniweb app first; if not, the command says why
+and where. The AGENTS.md and README.md among the files say how to start it.
+
+${colors.bright}update${colors.reset} downloads only what changed. A file already there with the size and
+SHA-256 the backend gives is kept, and an interrupted download carries on where it
+stopped. Files the backend no longer lists, such as your .env, are left alone.
+`,
     org: `
 ${colors.cyan}${colors.bright}uniweb org${colors.reset} ${colors.dim}— The organizations you belong to${colors.reset}
 
@@ -2555,6 +2580,7 @@ ${colors.bright}Commands:${colors.reset}
   promote <cmd>      A site's Promote: its posts and ads, getting found, and the accounts
   mcp                Tools for an AI agent in a host that runs them (Claude Desktop, Claude Code)
   org <cmd>          The organizations you belong to: list, create
+  engine <cmd>       The Application Engine for your machine: get, update
   inspect <path>     Inspect parsed content shape of a markdown file or folder
   label [file]       Place a picture's words over it, in a browser on this machine
   docs               Generate component documentation

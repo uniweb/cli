@@ -155,7 +155,10 @@ const VERBS = {
    */
   dev: ['--site', '--port', '--status', '--stop', '--published', '--org', '--personal'],
   // Prints a file: a flag it doesn't know is a typo, not a backend it might reach.
-  guide: ['--path']
+  guide: ['--path'],
+  // A directory is all it takes: the backend you are logged in to says what the engine is.
+  // `--org` / `--personal` are read on the way to a login, which may pick a workspace.
+  engine: ['--org', '--personal']
 }
 
 /**
