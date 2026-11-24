@@ -733,7 +733,12 @@ function refusedReservedScope(scope, lead) {
  * (`deriveScope`): your personal scope when you belong to none, else a pick at a terminal,
  * and refused without one.
  */
-async function deriveScopeFromLogin(client, args) {
+/**
+ * The scope a bare name registers under: the workspace the command works in, else one asked for.
+ * `quiet` says nothing of the choice, for a caller that only asks the catalog under it
+ * (`foundation-bring-along.js`); the release that follows says it.
+ */
+export async function deriveScopeFromLogin(client, args, { quiet = false } = {}) {
   const token = await client.token()
   const ws = await resolveWorkspace({ client, args })
   const live = !ws.refused && ws.source !== 'offline'
@@ -746,7 +751,7 @@ async function deriveScopeFromLogin(client, args) {
   if (fromWorkspace) {
     if (refusedReservedScope(fromWorkspace, 'The workspace you work in is')) return null
     const named = `${colors.bright}${fromWorkspace}${colors.reset}`
-    console.error(
+    if (!quiet) console.error(
       personal
         ? `Registering under your personal scope ${named} — you work in your personal workspace (${SOURCE_LABEL[ws.source]}). For an org: --scope @org.`
         : child
@@ -757,7 +762,7 @@ async function deriveScopeFromLogin(client, args) {
   }
   // Not a member of the unit's organization — a project's guest — so it gives no scope, and a bare
   // name is asked for one as when no workspace names any.
-  if (child) {
+  if (child && !quiet) {
     console.error(
       `${colors.dim}${ws.workspace}, the workspace you work in, names no scope, and ${topOfChildHandle(ws.workspace)} is not among your organizations.${colors.reset}`
     )

@@ -286,7 +286,8 @@ export async function bringFoundationAlong({
   cliBin,
   dryRun = false,
   verb = 'publish',
-  commits = []
+  commits = [],
+  scopeForBareName
 }) {
   const local = resolveLocalFoundation(siteDir, siteYml)
   if (!local) {
@@ -305,7 +306,8 @@ export async function bringFoundationAlong({
     cliBin,
     dryRun,
     verb,
-    committed: commits.includes(relative(siteDir, join(local.dir, 'package.json')))
+    committed: commits.includes(relative(siteDir, join(local.dir, 'package.json'))),
+    scopeForBareName
   })
 }
 
@@ -332,10 +334,13 @@ async function bringLocalCodeAlong({
   cliBin,
   dryRun = false,
   verb = 'publish',
-  committed = false
+  committed = false,
+  // The scope a bare name registers under; tests hand one in (`register.js::deriveScopeFromLogin`).
+  scopeForBareName = async (client, args) =>
+    (await import('../commands/register.js')).deriveScopeFromLogin(client, args, { quiet: true })
 }) {
   const Kind = kind === 'extension' ? 'Extension ' : 'Foundation'
-  const scopedName = await foundationScopedName(local.dir)
+  let scopedName = await foundationScopedName(local.dir)
   // A name with no scope yet (it has never registered) is still a name: say it. ⛔ Until
   // 2026-10-06 the label fell back to the KIND, and the line read "Releasing the foundation
   // foundation@0.1.0".
@@ -385,7 +390,7 @@ async function bringLocalCodeAlong({
   // the name it asked for. null when no scoped ref can be formed (then the site.yml
   // ref is forwarded).
   const pinnedRef = async () => {
-    const s = await foundationScopedName(local.dir)
+    const s = (await foundationScopedName(local.dir)) || scopedName
     const v = readPkgField(local.dir, 'version')
     return s && v ? `${s}@${v}` : null
   }
@@ -418,6 +423,17 @@ async function bringLocalCodeAlong({
     // instead. That gap is unavoidable offline: before the first release there is
     // no registered name to name.
     return { released: false, proceed: true, ref: await pinnedRef() }
+  }
+
+  // ⭐ A name with no scope yet registers under the scope the release derives from the login
+  // (`register`, `settleFoundationScope`), so the catalog is asked under that same name. ⛔ Until
+  // 2026-11-24 a bare name was never looked up: a foundation registered from a copy whose name lost
+  // its scope (or never kept it) read as "never released", `--no-release` refused, and a release of
+  // changed code went out under the registered version and was refused (`version_content_changed`)
+  // instead of under the next one (a kit trial, measured by its agent).
+  if (!scopedName && bareName && client) {
+    const scope = await scopeForBareName(client, args).catch(() => null)
+    if (scope) scopedName = `${scope}/${bareName}`
   }
 
   // Ask the catalog what it has. Null → not registered (or the backend can't

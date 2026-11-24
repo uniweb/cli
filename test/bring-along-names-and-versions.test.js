@@ -54,14 +54,15 @@ function recorder() {
   return { said, say }
 }
 
-async function run({ ws, site, cliBin }, client) {
+async function run({ ws, site, cliBin }, client, { scopeForBareName = async () => null, args = ['--non-interactive'] } = {}) {
   const { said, say } = recorder()
   try {
     const res = await bringFoundationAlong({
       client,
       siteDir: site,
       siteYml: { foundation: 'src' },
-      args: ['--non-interactive'],
+      args,
+      scopeForBareName,
       say,
       confirm: async () => {
         throw new Error('must not prompt')
@@ -98,18 +99,41 @@ test('a foundation named in main.js is looked up and pinned under that name — 
   assert.ok(said.dim.some((m) => /unchanged since release/.test(m)), JSON.stringify(said))
 })
 
-test('a BARE name has not registered — it is released, not looked up', async () => {
-  // `register` writes the scope it registers under into the name, so a bare name
-  // names nothing in any catalog yet.
-  const fixture = workspace({ name: 'base', version: '1.0.0' }, { main: "export default { name: 'base' }\n" })
+test('a BARE name is looked up under the scope its release would register it in', async () => {
+  // `register` writes the scope it derives from the login into the name, so a bare name
+  // registers as `@<that scope>/<name>`, and that is the name the catalog is asked for.
+  // ⛔ Until 2026-11-24 a bare name was never looked up: a foundation already registered
+  // under it read as "never released", and changed code went out under the registered
+  // version, which the registry refused (`version_content_changed`).
+  const fixture = workspace({ name: 'base', version: '0.1.0' }, { main: "export default { name: 'base' }\n" })
   const looked = []
   const client = {
     readFoundationLatest: async (name) => {
       looked.push(name)
-      return { latest_version: '1.0.0', digest: 'sha256:another-project' }
+      return name === '@acme/base' ? { latest_version: '0.1.0', digest: 'sha256:older-code' } : null
     }
   }
-  const { res } = await run(fixture, client)
+  const { res, said } = await run(fixture, client, { scopeForBareName: async () => '@acme' })
+  assert.deepEqual(looked, ['@acme/base'])
+  assert.equal(res.released, true)
+  assert.equal(res.bumped, '0.1.1', 'changed code goes under the next version')
+  assert.ok(said.info.some((m) => /as 0\.1\.1/.test(m)), JSON.stringify(said))
+})
+
+test('--no-release with a bare name binds to what its scope holds, rather than saying it was never released', async () => {
+  const fixture = workspace({ name: 'base', version: '0.1.1' }, { main: "export default { name: 'base' }\n" })
+  const client = { readFoundationLatest: async (name) => (name === '@acme/base' ? { latest_version: '0.1.0', digest: 'sha256:x' } : null) }
+  const { res, said } = await run(fixture, client, { scopeForBareName: async () => '@acme', args: ['--non-interactive', '--no-release'] })
+  assert.equal(res.proceed, true, JSON.stringify(said))
+  assert.equal(res.ref, '@acme/base@0.1.0')
+  assert.ok(!said.err.some((m) => /never been released/.test(m)))
+})
+
+test('a BARE name with no scope to be had (signed out, no workspace) is released, not looked up', async () => {
+  const fixture = workspace({ name: 'base', version: '1.0.0' }, { main: "export default { name: 'base' }\n" })
+  const looked = []
+  const client = { readFoundationLatest: async (name) => (looked.push(name), null) }
+  const { res } = await run(fixture, client, { scopeForBareName: async () => null })
   assert.deepEqual(looked, [])
   assert.equal(res.released, true)
 })
