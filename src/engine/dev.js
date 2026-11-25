@@ -67,11 +67,23 @@ export async function prepareDevEngine({ sitePath, rootDir }) {
   const info = readEngineInfo(dir) || found.info
   const port = portOf(readEnv(dir).UNIWEBD_FUNCTIONS_URL)
   const foundationDir = await foundationOf(sitePath, rootDir)
+  // The site's workspace extensions are foundations of its too: registered as the primary is, and
+  // named beside it in the blueprint, since a blueprint line may name a type or a function of one.
+  const extensionDirs = await extensionsOf(sitePath)
   if (foundationDir) {
-    const registered = await registerTypes({ foundationDir, dir, info })
-    if (registered === 'registered' || registered === 'current') await sendBlueprint({ siteDir: sitePath, foundationDir, dir, info })
+    let ready = true
+    for (const at of [foundationDir, ...extensionDirs]) {
+      const registered = await registerTypes({ foundationDir: at, dir, info })
+      if (registered !== 'registered' && registered !== 'current') ready = false
+    }
+    // ⛔ The blueprint waits for every foundation of the site: it is taken once, so a line naming a
+    // type of one not registered yet would be left out for good.
+    if (ready) await sendBlueprint({ siteDir: sitePath, foundationDir, extensionDirs, dir, info })
+    else if (existsSync(join(sitePath, 'blueprint.yml')) && !readRegistered(dir).blueprint) {
+      note('blueprint.yml waits until every foundation of the site is registered on the engine.')
+    }
   }
-  return { port, foundationDir, engine: { dir, info }, functionsKey: readEngineFile(dir, info, 'functions_key') }
+  return { port, foundationDir, extensionDirs, engine: { dir, info }, functionsKey: readEngineFile(dir, info, 'functions_key') }
 }
 
 /**
@@ -97,8 +109,9 @@ export async function registerTypes({ foundationDir, dir, info }) {
     return 'registered'
   }
   warn(
-    'The engine did not take the types (above). A change the entries it holds refuse is refused: ' +
-      'to start the engine over with the types as they are now, run `uniweb engine reset --yes`, then `uniweb dev`.'
+    `Registering ${relative(process.cwd(), foundationDir) || foundationDir} did not finish (above). Fix what it says, and ` +
+      '`uniweb dev` registers again when its types change or when it next starts. If the engine refused a type change ' +
+      'its entries can\'t take, start it over: `uniweb engine reset --yes`.'
   )
   return 'refused'
 }
@@ -114,7 +127,7 @@ export async function registerTypes({ foundationDir, dir, info }) {
  *
  * @returns {Promise<'sent'|'held'|'none'|'failed'>}
  */
-export async function sendBlueprint({ siteDir, foundationDir, dir, info }) {
+export async function sendBlueprint({ siteDir, foundationDir, extensionDirs = [], dir, info }) {
   const file = join(siteDir, 'blueprint.yml')
   if (!existsSync(file)) return 'none'
   const digest = createHash('sha256').update(readFileSync(file)).digest('hex')
@@ -132,9 +145,14 @@ export async function sendBlueprint({ siteDir, foundationDir, dir, info }) {
     const blueprint = readBlueprint(siteDir)
     if (!blueprint) return 'none'
     refuseUnreadableBlueprint(blueprint)
-    const { name, version } = foundationIdentity(foundationDir)
+    const { name } = foundationIdentity(foundationDir)
     const scope = name?.startsWith('@') ? name.slice(0, name.indexOf('/')) : null
-    body = { foundations: name && version ? [`${name}@${version}`] : [], blueprint: blueprintForWire(blueprint, scope) }
+    // The site's foundations as registered: its primary, then its extensions.
+    const foundations = [foundationDir, ...extensionDirs]
+      .map(foundationIdentity)
+      .filter((f) => f.name && f.version)
+      .map((f) => `${f.name}@${f.version}`)
+    body = { foundations, blueprint: blueprintForWire(blueprint, scope) }
   } catch (err) {
     warn(`blueprint.yml was not sent: ${err.message}`)
     return 'failed'
@@ -246,6 +264,37 @@ function filesUnder(dir) {
     else if (entry.isFile()) out.push(at)
   }
   return out
+}
+
+/**
+ * The folders of the site's workspace extensions (`site.yml::extensions`: a name, or a
+ * site-relative URL whose first segment names one), found by the build's own rule
+ * (`@uniweb/build`'s `findSiteExtension`). An extension loaded from another address is not this
+ * project's to register.
+ */
+async function extensionsOf(sitePath) {
+  let declared
+  try {
+    declared = (yaml.load(readFileSync(join(sitePath, 'site.yml'), 'utf8')) || {}).extensions
+  } catch {
+    return []
+  }
+  if (!Array.isArray(declared) || !declared.length) return []
+  let build
+  try {
+    build = await import('@uniweb/build')
+  } catch {
+    return []
+  }
+  const dirs = []
+  for (const entry of declared) {
+    const url = typeof entry === 'string' ? entry : entry && typeof entry === 'object' ? entry.url : null
+    if (typeof url !== 'string' || /^[a-z][a-z0-9+.-]*:/i.test(url) || url.startsWith('//')) continue
+    const name = url.startsWith('/') ? build.extensionNameOf(url)?.name : /^[A-Za-z0-9._-]+$/.test(url) ? url : null
+    const dir = name ? build.findSiteExtension(name, sitePath) : null
+    if (dir && !dirs.includes(dir)) dirs.push(dir)
+  }
+  return dirs
 }
 
 /** The site's foundation: the folder `site.yml::foundation` names in the workspace, else its first foundation. */

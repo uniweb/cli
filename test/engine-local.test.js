@@ -172,10 +172,14 @@ test('⭐ `uniweb dev` sends blueprint.yml once, named in full, and an edit afte
     const dir = engine('conf')
     const args = { siteDir: join(project, 'site'), foundationDir: join(project, 'src'), dir, info: { api: `${origin}/api` } }
 
-    assert.equal(await sendBlueprint(args), 'sent')
+    // A workspace extension of the site, registered beside it, is named after the primary.
+    mkdirSync(join(project, 'fx'))
+    writeFileSync(join(project, 'fx', 'package.json'), JSON.stringify({ name: 'fx', version: '0.1.0' }))
+    writeFileSync(join(project, 'fx', 'main.js'), "export default { name: '@jane/fx' }\n")
+    assert.equal(await sendBlueprint({ ...args, extensionDirs: [join(project, 'fx')] }), 'sent')
     assert.equal(asked[0].url, '/dev/backend/blueprint')
     assert.equal(asked[0].auth, 'Bearer TKN')
-    assert.deepEqual(asked[0].body.foundations, ['@jane/conference@0.3.0'])
+    assert.deepEqual(asked[0].body.foundations, ['@jane/conference@0.3.0', '@jane/fx@0.1.0'])
     assert.deepEqual(Object.keys(asked[0].body.blueprint.access), ['@jane/track'])
 
     // Taken once: not sent again, and an edit is said, not sent.

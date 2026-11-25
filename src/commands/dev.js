@@ -318,8 +318,9 @@ export async function dev(args = []) {
   // While it runs, a change to the project's types registers them on its engine again.
   if (devEngine?.engine && devEngine.foundationDir) {
     const { watchTypes } = await import('../engine/dev.js')
-    const stopWatching = watchTypes({ foundationDir: devEngine.foundationDir, ...devEngine.engine })
-    child.on('close', stopWatching)
+    for (const foundationDir of [devEngine.foundationDir, ...(devEngine.extensionDirs || [])]) {
+      child.on('close', watchTypes({ foundationDir, ...devEngine.engine }))
+    }
   }
   child.on('close', (code) => process.exit(code ?? 0))
   child.on('error', (err) => {
