@@ -331,7 +331,15 @@ export async function dev(args = []) {
     process.exit(1)
   })
   // A line of help, never a reason for the server to stop.
-  announceWhenListening({ site, sitePath, startedAt, child, runningDevServer }).catch(() => {})
+  // Once it listens, the project's engine is told the site's address, so the mail it sends links
+  // to the site (`../engine/dev.js`).
+  const onListening = devEngine?.engine
+    ? async (url) => {
+        const { tellEngineSite } = await import('../engine/dev.js')
+        await tellEngineSite({ ...devEngine.engine, url })
+      }
+    : null
+  announceWhenListening({ site, sitePath, startedAt, child, runningDevServer, onListening }).catch(() => {})
 }
 
 /**
@@ -339,13 +347,14 @@ export async function dev(args = []) {
  * started it to read. Waits on the server's own record, written when it listens, so the
  * address is the one it was given, not one this derived from a port.
  */
-async function announceWhenListening({ site, sitePath, startedAt, child, runningDevServer }) {
+async function announceWhenListening({ site, sitePath, startedAt, child, runningDevServer, onListening = null }) {
   let exited = false
   child.once('close', () => { exited = true })
   for (const until = Date.now() + 120_000; !exited && Date.now() < until; ) {
     const running = await runningDevServer(sitePath, { timeout: 1000 })
     if (running && Date.parse(running.startedAt) >= startedAt) {
       console.error(`${GREEN}✓${RESET} Serving ${site.name} at ${CYAN}${running.url}${RESET}`)
+      if (onListening) await onListening(running.url)
       return
     }
     await new Promise((resolve) => setTimeout(resolve, 250))

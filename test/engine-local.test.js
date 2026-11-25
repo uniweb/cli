@@ -265,3 +265,34 @@ test('⛔ `uniweb engine` and create’s engine step load nothing of @uniweb/bui
   for (const entry of ['commands/engine.js', 'engine/verbs.js', 'engine/setup.js', 'engine/local.js']) walk(res(src, entry))
   assert.deepEqual(reached, [])
 })
+
+test('⭐ once the dev server listens, the engine is told the site’s origin, with its own owner token; an engine without the route is left alone', async () => {
+  const h = home()
+  const { createServer } = await import('node:http')
+  const asked = []
+  let status = 200
+  const server = createServer((req, res) => {
+    let body = ''
+    req.on('data', (c) => (body += c))
+    req.on('end', () => {
+      asked.push({ method: req.method, url: req.url, auth: req.headers.authorization, body: JSON.parse(body) })
+      res.statusCode = status
+      res.setHeader('content-type', 'application/json')
+      res.end(JSON.stringify(status === 200 ? { origin: 'http://localhost:5173' } : { title: 'Not Found' }))
+    })
+  })
+  await new Promise((done) => server.listen(0, '127.0.0.1', done))
+  try {
+    const { tellEngineSite } = await import('../src/engine/dev.js')
+    const dir = engine('conf')
+    writeFileSync(join(dir, 'cli-token'), 'OWNER\n')
+    const info = { api: `http://127.0.0.1:${server.address().port}/api`, cli_token: 'cli-token' }
+    assert.equal(await tellEngineSite({ dir, info, url: 'http://localhost:5173/' }), 'told')
+    assert.deepEqual(asked[0], { method: 'PUT', url: '/dev/backend/site', auth: 'Bearer OWNER', body: { origin: 'http://localhost:5173' } })
+    status = 404
+    assert.equal(await tellEngineSite({ dir, info, url: 'http://localhost:5173/' }), 'unsupported')
+  } finally {
+    await new Promise((done) => server.close(done))
+    h.restore()
+  }
+})

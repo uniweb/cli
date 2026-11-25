@@ -8,7 +8,9 @@
  *   - it hands the dev server the engine's functions key, so its compute runner checks each call;
  *   - it registers the project's types (`uniweb register --schema-only`) when the engine holds
  *     none of them yet, and again when `src/schemas` changes while it runs;
- *   - then, once, it sends the site's `blueprint.yml`, how the engine begins (`sendBlueprint`).
+ *   - then, once, it sends the site's `blueprint.yml`, how the engine begins (`sendBlueprint`);
+ *   - once the dev server listens, it tells the engine the site's address, so the mail it sends
+ *     links to the site (`tellEngineSite`).
  *
  * ⛔ IT REGISTERS ONLY WHILE THE CLI WORKS WITH THAT ENGINE. The CLI talks to one backend at a
  * time, and a developer who signed in to Uniweb to publish must never have a half-edited type
@@ -206,6 +208,46 @@ function foundationIdentity(foundationDir) {
     break
   }
   return { name: name || pkg.name || null, version: pkg.version || null }
+}
+
+/**
+ * Tell the engine where its site is served, once the dev server listens: `PUT /dev/backend/site`
+ * with the server's origin (`http://localhost:<port>`), as a live site backend is told its site's
+ * address. From then on the mail it sends (a sign-up's confirmation, a sign-in link, a reset, an
+ * offer) links to `<origin>/?<step>=<token>`, which the site's own page finishes
+ * (`@uniweb/api`'s `useMailedLink`), instead of to the engine.
+ *
+ * Sent at every start, since the dev server's port can change from one run to the next; the same
+ * origin again changes nothing. It authenticates with the engine's own owner token (`cli-token`,
+ * new at every start), so it doesn't depend on which backend the CLI is signed in to. An engine
+ * without the route (`404`) is left as it is, quietly.
+ *
+ * @param {{ dir: string, info: object, url: string }} p - `url`: the address the dev server states
+ * @returns {Promise<'told'|'unsupported'|'failed'>}
+ */
+export async function tellEngineSite({ dir, info, url }) {
+  const origin = originOf(url)
+  const token = readEngineFile(dir, info, 'cli_token')
+  if (!origin || !token) return 'failed'
+  let res
+  try {
+    res = await fetch(`${originOf(info.api)}/dev/backend/site`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+      body: JSON.stringify({ origin }),
+    })
+  } catch {
+    warn(`The engine did not answer, so its mail still links to the engine, not to ${origin}.`)
+    return 'failed'
+  }
+  if (res.status === 404) return 'unsupported'
+  if (res.ok) {
+    note(`The engine's mail links to ${origin} (verify, sign-in, reset, offers).`)
+    return 'told'
+  }
+  const answer = await res.json().catch(() => null)
+  warn(`The engine did not take the site's address ${origin}: ${answer?.detail || answer?.title || `HTTP ${res.status}`}`)
+  return 'failed'
 }
 
 /**
