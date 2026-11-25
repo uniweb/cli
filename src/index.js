@@ -2284,20 +2284,35 @@ ${colors.bright}Options:${colors.reset}
   --personal         (or your personal workspace)
 `,
     engine: `
-${colors.cyan}${colors.bright}uniweb engine${colors.reset} ${colors.dim}— The Application Engine for your machine${colors.reset}
+${colors.cyan}${colors.bright}uniweb engine${colors.reset} ${colors.dim}— The Application Engine on this machine, for a solution's project${colors.reset}
 
 ${colors.bright}Usage:${colors.reset}
-  uniweb engine get [<dir>]      (default: uniweb-engine)
-  uniweb engine update [<dir>]   (default: this directory)
+  uniweb engine setup [--engine <dir>]   Give this project its engine, and point the project at it
+  uniweb engine status [<name>]          Whether it runs, its addresses, whether the CLI works with it
+  uniweb engine start | stop [<name>]    Start it and wait until it answers; stop it, keeping its data
+  uniweb engine reset [<name>] --yes     Wipe it and start over
+  uniweb engine guide [<name>]           Print the engine's own guide, for you or your AI agent
+  uniweb engine get [<dir>]              Download the engine's files into <dir> (default: uniweb-engine)
+  uniweb engine update [<dir>]           Bring downloaded files up to date (default: this directory)
 
-Downloads the files that run the Application Engine on this machine, from the backend
-you are logged in to, and writes them into <dir>. Your account must have access, and
-you accept the engine's licence in the Uniweb app first; if not, the command says why
-and where. The AGENTS.md and README.md among the files say how to start it.
+${colors.bright}setup${colors.reset} checks that Docker runs, takes your handle from the backend you are signed in
+to (Uniweb by default), puts the engine's files in ~/.uniweb/engines/<name>/, loads its
+images, starts it, signs the CLI in to it, and names it in the site's $devBackend.
+\`uniweb create\` runs it for a solution template. With ${colors.bright}--engine <dir>${colors.reset}, the files come
+from that folder (a release's compose.yaml, guide and images) instead of being downloaded.
 
-${colors.bright}update${colors.reset} downloads only what changed. A file already there with the size and
-SHA-256 the backend gives is kept, and an interrupted download carries on where it
-stopped. Files the backend no longer lists, such as your .env, are left alone.
+${colors.bright}uniweb dev${colors.reset} then starts the engine if it is stopped, registers the project's types,
+sends blueprint.yml once, and answers the engine's compute calls.
+
+${colors.bright}reset${colors.reset} deletes the engine's members, entries and settings, so it asks for --yes. Run it
+before going live: the live engine starts from blueprint.yml and the types, not from this one.
+
+${colors.bright}get${colors.reset} and ${colors.bright}update${colors.reset} download from the backend you are logged in to. Your account must have
+access, and you accept the engine's licence in the browser first; if not, the command says
+why and where. update downloads only what changed, and leaves files it no longer lists, such
+as your .env, alone.
+
+<name> is an engine in ~/.uniweb/engines/; without it, the one this project's $devBackend names.
 `,
     org: `
 ${colors.cyan}${colors.bright}uniweb org${colors.reset} ${colors.dim}— The organizations you belong to${colors.reset}
