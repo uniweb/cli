@@ -22,7 +22,7 @@ import { existsSync, readFileSync, rmSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import yaml from 'js-yaml'
 import { findWorkspaceRoot } from '../utils/workspace.js'
-import { discoverSites } from '../utils/discover.js'
+import { workspacePackages } from '../utils/workspace-patterns.js'
 import { loggedInOrigin } from '../utils/config.js'
 import { runRegistryLogin } from '../utils/registry-auth.js'
 import { setupEngine } from './setup.js'
@@ -203,12 +203,18 @@ async function engineFor(name) {
 /**
  * The project's site: the folder you are in when it holds a `site.yml`, else the workspace's site
  * — the one whose `$devBackend` is an address, else the first.
+ *
+ * ⛔ Read from the workspace's own patterns and the `site.yml` files, never through
+ * `@uniweb/build` (`discoverSites` loads it): `create` runs this before anything is installed,
+ * and `uniweb engine` runs from a global install, where that optional peer isn't there.
  */
 export async function projectSite(cwd = process.cwd()) {
   if (existsSync(join(cwd, 'site.yml'))) return { dir: cwd, projectName: nameOf(findWorkspaceRoot(cwd) || cwd) }
   const root = findWorkspaceRoot(cwd)
   if (!root) return null
-  const sites = (await discoverSites(root)).map((s) => join(root, s.path))
+  const sites = workspacePackages(root)
+    .map((rel) => join(root, rel))
+    .filter((dir) => existsSync(join(dir, 'site.yml')))
   const dir = sites.find((d) => devBackendAddressOf(d)) || sites[0]
   return dir ? { dir, projectName: nameOf(root) } : null
 }

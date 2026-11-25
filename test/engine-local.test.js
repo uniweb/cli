@@ -244,3 +244,24 @@ test('⭐ a template’s foundation keeps its name and loses its scope, which is
   assert.deepEqual(ensureFoundationName(dir, 'mine'), {})
   assert.match(readFileSync(join(dir, 'main.js'), 'utf8'), /name: 'courses'/)
 })
+
+test('⛔ `uniweb engine` and create’s engine step load nothing of @uniweb/build: they run from a global install, before any project is installed', async () => {
+  const { readFileSync: read } = await import('node:fs')
+  const { dirname: dir, resolve: res } = await import('node:path')
+  const { fileURLToPath } = await import('node:url')
+  const src = res(dir(fileURLToPath(import.meta.url)), '..', 'src')
+  const seen = new Set()
+  const reached = []
+  const walk = (file) => {
+    if (seen.has(file)) return
+    seen.add(file)
+    // Static imports only: a dynamic `import()` loads when its command runs, inside a project.
+    for (const m of read(file, 'utf8').matchAll(/^import\s[^'"]*?from\s+['"]([^'"]+)['"]/gm)) {
+      const spec = m[1]
+      if (spec.startsWith('@uniweb/build') || spec.endsWith('/discover.js')) reached.push(`${file.slice(src.length)} → ${spec}`)
+      if (spec.startsWith('.')) walk(res(dir(file), spec))
+    }
+  }
+  for (const entry of ['commands/engine.js', 'engine/verbs.js', 'engine/setup.js', 'engine/local.js']) walk(res(src, entry))
+  assert.deepEqual(reached, [])
+})
