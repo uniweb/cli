@@ -293,14 +293,17 @@ export async function dev(args = []) {
     }
   }
   // ⭐ A PROJECT WITH AN ENGINE ON THIS MACHINE (`$devBackend` naming one): it is started if it
-  // is stopped, the site is served on the port the engine calls its compute functions on, the
-  // runner gets the key the engine signs those calls with, and the project's types are registered
+  // is stopped, its compute runner answers on the port the engine calls it on, with the key the
+  // engine signs those calls with, and the project's types are registered
   // when they changed (`../engine/dev.js`). Not under `--published`, which uses the published site.
   let devEngine = null
   if (!wanted.published) {
     const { prepareDevEngine } = await import('../engine/dev.js')
     devEngine = await prepareDevEngine({ sitePath, rootDir })
-    if (devEngine.port && wanted.port === null) wanted.port = devEngine.port
+    // The runner answers on a server of its own, on the port the engine was given for it, on IPv4
+    // loopback, which a backend in Docker reaches (`@uniweb/build`'s `serveDevCompute`). The site
+    // itself takes whatever port it takes.
+    if (devEngine.port) env = { ...env, UNIWEB_FUNCTIONS_PORT: String(devEngine.port) }
     if (devEngine.functionsKey) env = { ...env, UNIWEB_FUNCTIONS_KEY: devEngine.functionsKey }
   }
   // That port or none: the dev server refuses to move past it (`dev-server.js`).

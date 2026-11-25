@@ -13,8 +13,7 @@
  *   3. The engine's files, into `~/.uniweb/engines/<name>/`: from that backend (`engine get`,
  *      whose licence the person accepts in the browser), or from a folder given with `--engine`.
  *   4. Its `.env`: its name, the handle, two free ports for it, and the address of the compute
- *      runner `uniweb dev` serves (`UNIWEBD_FUNCTIONS_URL`, on a port the project's dev server
- *      then takes).
+ *      runner `uniweb dev` serves (`UNIWEBD_FUNCTIONS_URL`, on a port of the runner's own).
  *   5. Start it, and wait until it answers.
  *   6. The CLI's one session moves to the engine, signed in as its owner with the token the
  *      engine wrote, in its home org. Going live is `uniweb login` back to Uniweb.

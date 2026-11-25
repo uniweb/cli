@@ -1471,7 +1471,7 @@ async function main() {
         success(`Its engine runs at ${result.info.api.replace(/\/api$/, '')}, and the CLI works with it.`)
         if (result.info.admin) log(`  ${colors.dim}Admin App: ${result.info.admin}${colors.reset}`)
         if (result.info.owner?.sign_in) log(`  ${colors.dim}Sign in as its owner: ${result.info.owner.sign_in}${colors.reset}`)
-        log(`  ${colors.dim}\`uniweb dev\` registers its types, sends blueprint.yml, and serves the site on port ${result.devPort}.${colors.reset}`)
+        log(`  ${colors.dim}\`uniweb dev\` registers its types, sends blueprint.yml, and answers the engine's compute calls on port ${result.devPort}.${colors.reset}`)
         log(`  ${colors.dim}The engine's own guide, for you or your agent: ${prefix} engine guide${colors.reset}`)
       } else {
         log(`  ${colors.yellow}⚠ ${result.reason}${colors.reset}`)

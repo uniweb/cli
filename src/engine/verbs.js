@@ -176,7 +176,7 @@ function printReady({ dir, info, devPort }) {
   say.ok(`The engine is running, and the CLI works with it (${originOf(info.api)}).`)
   printAddresses(info)
   say.dim(`Its files: ${dir}`)
-  say.dim(`uniweb dev serves the site on port ${devPort}, where the engine calls its compute functions.`)
+  say.dim(`uniweb dev answers the engine's compute calls on port ${devPort}.`)
   console.log('')
   say.dim('`uniweb dev` registers the project\'s types on it, then sends blueprint.yml, how it begins.')
   say.dim('The engine\'s own guide, for you or your agent: uniweb engine guide')

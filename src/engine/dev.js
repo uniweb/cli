@@ -2,8 +2,9 @@
  * `uniweb dev`, for a project whose `$devBackend` names an engine on this machine (`./local.js`):
  *
  *   - it starts the engine when it is stopped, and says so;
- *   - it serves the site on the port the engine calls its compute functions on — the one
- *     `UNIWEBD_FUNCTIONS_URL` names in the engine's `.env` — unless `--port` says otherwise;
+ *   - its compute runner answers on the port the engine calls it on — the one
+ *     `UNIWEBD_FUNCTIONS_URL` names in the engine's `.env` — on IPv4 loopback, which a container
+ *     reaches; the site itself takes whatever port it takes;
  *   - it hands the dev server the engine's functions key, so its compute runner checks each call;
  *   - it registers the project's types (`uniweb register --schema-only`) when the engine holds
  *     none of them yet, and again when `src/schemas` changes while it runs;
