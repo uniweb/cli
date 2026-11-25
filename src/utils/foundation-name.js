@@ -102,8 +102,20 @@ export function suggestFoundationName(foundationDir) {
  * @returns {boolean}
  */
 export function mainNamesFoundation(text) {
+  return topLevelNameKeyEnd(text) !== -1
+}
+
+/**
+ * Where the default export's own `name` key ends — the index just past it, before its `:` — or
+ * -1 when the export names none. The scan `mainNamesFoundation` answers by, so an edit lands on
+ * that key and never on a `name` nested in another declaration.
+ *
+ * @param {string} text - main.js source
+ * @returns {number}
+ */
+export function topLevelNameKeyEnd(text) {
   const opening = /export\s+default\s*\{/.exec(text)
-  if (!opening) return false
+  if (!opening) return -1
   let depth = 1
   let atKey = true // just after the opening brace, or a comma at the top level
   for (let i = opening.index + opening[0].length; i < text.length && depth > 0; i++) {
@@ -118,7 +130,7 @@ export function mainNamesFoundation(text) {
       let j = i + 1
       while (j < text.length && text[j] !== c) j += text[j] === '\\' ? 2 : 1
       if (depth === 1 && atKey && text.slice(i + 1, j) === 'name' && /^\s*:/.test(text.slice(j + 1))) {
-        return true
+        return j + 1
       }
       i = j
       atKey = false
@@ -132,14 +144,14 @@ export function mainNamesFoundation(text) {
     } else if (depth === 1 && atKey && /[A-Za-z_$]/.test(c)) {
       const word = /^[A-Za-z_$][\w$]*/.exec(text.slice(i))[0]
       // `name: 'x'`, or the shorthand `{ name }`
-      if (word === 'name' && /^\s*[:,}]/.test(text.slice(i + word.length))) return true
+      if (word === 'name' && /^\s*[:,}]/.test(text.slice(i + word.length))) return i + word.length
       i += word.length - 1
       atKey = false
     } else if (!/\s/.test(c)) {
       atKey = false
     }
   }
-  return false
+  return -1
 }
 
 /**
@@ -198,12 +210,29 @@ export function writeFoundationName(mainFile, name, { replace = null } = {}) {
  * Called after template content is applied, because a template's own main.js
  * replaces the scaffolded one — and with it the name the scaffold wrote.
  *
+ * ⭐ A TEMPLATE'S NAME IS KEPT, ITS SCOPE IS NOT. A scope is the workspace a foundation registers
+ * in, and the template's author's (`@acme/courses`) is not the developer's: registering under it
+ * is refused to anyone not in it, and a reserved one to everybody. So `@acme/courses` becomes
+ * `courses`, which `register` names in the scope of the workspace the developer works in.
+ *
  * @param {string} foundationDir - the scaffolded package (flat layout: main.js at its root)
  * @param {string|null} name
+ * @returns {{ unscoped?: string }} the scope taken off the template's name, when one was
  */
 export function ensureFoundationName(foundationDir, name) {
-  if (!name) return
   const mainFile = join(foundationDir, 'main.js')
-  if (existsSync(mainFile) && mainNamesFoundation(readFileSync(mainFile, 'utf8'))) return
-  writeFoundationName(mainFile, name)
+  if (existsSync(mainFile)) {
+    const text = readFileSync(mainFile, 'utf8')
+    const keyEnd = topLevelNameKeyEnd(text)
+    if (keyEnd !== -1) {
+      // The export's own `name`, a string literal with a scope; anything else is left as written.
+      const scoped = /^(\s*:\s*)(['"])(@[^/'"\s]+)\/([^'"]+)\2/.exec(text.slice(keyEnd))
+      if (!scoped) return {}
+      const [whole, colon, quote, scope, bare] = scoped
+      writeFileSync(mainFile, `${text.slice(0, keyEnd)}${colon}${quote}${bare}${quote}${text.slice(keyEnd + whole.length)}`)
+      return { unscoped: scope }
+    }
+  }
+  if (name) writeFoundationName(mainFile, name)
+  return {}
 }

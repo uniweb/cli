@@ -587,7 +587,10 @@ async function createFromContentTemplate(
         { projectName },
         { onProgress, onWarning }
       )
-      ensureFoundationName(fullPath, registryName)
+      const { unscoped } = ensureFoundationName(fullPath, registryName)
+      if (unscoped) {
+        onProgress?.(`The foundation keeps the template's name without its scope (${unscoped}): \`register\` names it in your workspace's scope.`)
+      }
     }
 
     // Merge template dependencies into package.json

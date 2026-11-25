@@ -233,3 +233,14 @@ test('the engine’s guide is the AGENTS.md its files carry, else its README', (
     h.restore()
   }
 })
+
+test('⭐ a template’s foundation keeps its name and loses its scope, which is the developer’s workspace’s', async () => {
+  const { ensureFoundationName } = await import('../src/utils/foundation-name.js')
+  const dir = mkdtempSync(join(tmpdir(), 'uw-scope-'))
+  writeFileSync(join(dir, 'main.js'), "// name: '@not/this'\nexport default {\n  name: '@proximify/courses',\n  vars: { name: '@x/y' },\n}\n")
+  assert.deepEqual(ensureFoundationName(dir, 'mine'), { unscoped: '@proximify' })
+  assert.equal(readFileSync(join(dir, 'main.js'), 'utf8'), "// name: '@not/this'\nexport default {\n  name: 'courses',\n  vars: { name: '@x/y' },\n}\n")
+  // A bare name is kept as it is.
+  assert.deepEqual(ensureFoundationName(dir, 'mine'), {})
+  assert.match(readFileSync(join(dir, 'main.js'), 'utf8'), /name: 'courses'/)
+})
