@@ -200,6 +200,7 @@ export async function engine(args = [], deps = {}) {
     console.log('  start | stop [<name>]   Start the project\'s engine (and wait until it answers), or stop it')
     console.log('  status [<name>]         Whether it runs, its addresses, and whether the CLI works with it')
     console.log('  reset [<name>] --yes    Wipe it and start over; `uniweb dev` registers the types again')
+    console.log('  guide [<name>]          Print the engine\'s own guide (its AGENTS.md), for you or your agent')
     console.log('  get [<dir>]             Download the Application Engine for this machine into <dir> (default uniweb-engine)')
     console.log('  update [<dir>]          Bring a downloaded engine up to date (default: this directory)')
     return { exitCode: sub ? 2 : 0 }

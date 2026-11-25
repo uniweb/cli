@@ -193,3 +193,39 @@ test('⭐ `uniweb dev` sends blueprint.yml once, named in full, and an edit afte
     h.restore()
   }
 })
+
+test('⭐ the release’s images are loaded once per archive, and only for this machine', async () => {
+  const h = home()
+  try {
+    const dir = engine('club')
+    assert.deepEqual(await local.loadImages(dir), {}, 'no archive: images built or pulled another way')
+
+    const other = process.arch === 'arm64' ? 'amd64' : 'arm64'
+    writeFileSync(join(dir, `images-${other}.tar.gz`), 'x')
+    assert.match((await local.loadImages(dir)).error, new RegExp(`for ${other}, not this machine`))
+
+    // Already loaded: the marker names this archive as it is, so nothing runs.
+    const mine = process.arch === 'arm64' ? 'arm64' : 'amd64'
+    writeFileSync(join(dir, `images-${mine}.tar.gz`), 'y')
+    const { statSync } = await import('node:fs')
+    const { size, mtimeMs } = statSync(join(dir, `images-${mine}.tar.gz`))
+    writeFileSync(join(dir, '.images-loaded'), `images-${mine}.tar.gz:${size}:${Math.round(mtimeMs)}\n`)
+    assert.deepEqual(await local.loadImages(dir), {})
+  } finally {
+    h.restore()
+  }
+})
+
+test('the engine’s guide is the AGENTS.md its files carry, else its README', () => {
+  const h = home()
+  try {
+    const dir = engine('club')
+    assert.equal(local.engineGuidePath(dir), null)
+    writeFileSync(join(dir, 'README.md'), '# r\n')
+    assert.equal(local.engineGuidePath(dir), join(dir, 'README.md'))
+    writeFileSync(join(dir, 'AGENTS.md'), '# a\n')
+    assert.equal(local.engineGuidePath(dir), join(dir, 'AGENTS.md'))
+  } finally {
+    h.restore()
+  }
+})

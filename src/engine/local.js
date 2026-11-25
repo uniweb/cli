@@ -19,7 +19,7 @@
  */
 
 import { spawnSync } from 'node:child_process'
-import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { createServer } from 'node:net'
 import { getAuthDir } from '../utils/registry-auth.js'
@@ -182,12 +182,59 @@ export function engineRunning(dir) {
 
 /**
  * Start the engine and wait until it is healthy (`docker compose up -d --wait`), its output relayed.
+ * Its images are loaded first when its folder holds ones not loaded yet (`loadImages`).
  *
  * @param {string} dir
  * @returns {Promise<boolean>}
  */
 export async function startEngine(dir) {
+  const images = await loadImages(dir)
+  if (images.error) {
+    console.error(`\x1b[31m✗\x1b[0m ${images.error}`)
+    return false
+  }
   return (await runRelayed('docker', ['compose', 'up', '-d', '--wait'], { cwd: dir })) === 0
+}
+
+/** Docker's name for this machine's architecture, as a release names its images. */
+const DOCKER_ARCH = { x64: 'amd64', arm64: 'arm64' }
+
+/**
+ * Load the engine's images into Docker from the archive its folder holds for this machine
+ * (`images-<arch>.tar.gz`, as a release carries them), once per archive: a later start, or a
+ * folder with no archive (images built or pulled another way), loads nothing.
+ *
+ * @param {string} dir
+ * @returns {Promise<{ loaded?: string, error?: string }>}
+ */
+export async function loadImages(dir) {
+  const archives = existsSync(dir) ? readdirSync(dir).filter((f) => /^images-[A-Za-z0-9_-]+\.tar\.gz$/.test(f)) : []
+  if (!archives.length) return {}
+  const arch = DOCKER_ARCH[process.arch] || process.arch
+  const file = archives.find((f) => f === `images-${arch}.tar.gz`)
+  if (!file) {
+    return { error: `The engine's images in ${dir} are for ${archives.map((f) => f.slice(7, -7)).join(', ')}, not this machine (${arch}). Get them again: uniweb engine update ${dir}` }
+  }
+  const at = join(dir, file)
+  const { size, mtimeMs } = statSync(at)
+  const stamp = `${file}:${size}:${Math.round(mtimeMs)}`
+  const marker = join(dir, '.images-loaded')
+  if (existsSync(marker) && readFileSync(marker, 'utf8').trim() === stamp) return {}
+  console.log(`\x1b[36m→\x1b[0m Loading the engine's images into Docker (${file})…`)
+  if ((await runRelayed('docker', ['load', '-i', file], { cwd: dir })) !== 0) {
+    return { error: `Docker could not load ${at}.` }
+  }
+  writeFileSync(marker, stamp + '\n')
+  return { loaded: file }
+}
+
+/** The engine's guide for the agent working on its project: the `AGENTS.md` its files carry, else `README.md`. */
+export function engineGuidePath(dir) {
+  for (const name of ['AGENTS.md', 'README.md']) {
+    const at = join(dir, name)
+    if (existsSync(at)) return at
+  }
+  return null
 }
 
 /** Stop it, keeping its data. */

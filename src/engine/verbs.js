@@ -5,6 +5,9 @@
  *   setup [--engine <dir>]   give the project its engine and point it there (`./setup.js`)
  *   start | stop [<name>]    start it and wait until it answers; stop it, keeping its data
  *   status [<name>]          running or not, its addresses, and whether the CLI works with it
+ *   guide [<name>]           print the engine's own guide (its AGENTS.md): what the backend
+ *                            is, and the bar a solution meets. Read it from here, not copied
+ *                            into the project, so it is the running engine's
  *   reset [<name>] --yes     start over: its data is wiped, and `uniweb dev` registers the
  *                            project's types again. What proves `blueprint.yml` matches what was
  *                            tested before going live
@@ -26,6 +29,7 @@ import { setupEngine } from './setup.js'
 import {
   dockerProblem,
   engineDir,
+  engineGuidePath,
   engineRunning,
   findEngineFor,
   originOf,
@@ -45,7 +49,7 @@ const say = {
   dim: (m) => console.log(`  ${c.dim}${m}${c.reset}`),
 }
 
-export const ENGINE_VERBS = ['setup', 'start', 'stop', 'status', 'reset']
+export const ENGINE_VERBS = ['setup', 'start', 'stop', 'status', 'reset', 'guide']
 
 /**
  * @param {string} sub
@@ -81,6 +85,16 @@ export async function engineVerb(sub, rest) {
     return { exitCode: 2 }
   }
   const { name, dir } = found
+
+  if (sub === 'guide') {
+    const at = engineGuidePath(dir)
+    if (!at) {
+      say.err(`The engine ${name} carries no guide (${dir}).`)
+      return { exitCode: 1 }
+    }
+    process.stdout.write(readFileSync(at, 'utf8'))
+    return { exitCode: 0 }
+  }
 
   if (sub === 'status') {
     const info = readEngineInfo(dir)
@@ -165,6 +179,7 @@ function printReady({ dir, info, devPort }) {
   say.dim(`uniweb dev serves the site on port ${devPort}, where the engine calls its compute functions.`)
   console.log('')
   say.dim('`uniweb dev` registers the project\'s types on it, then sends blueprint.yml, how it begins.')
+  say.dim('The engine\'s own guide, for you or your agent: uniweb engine guide')
   say.dim('Going live: uniweb login (back to Uniweb), then uniweb publish.')
 }
 

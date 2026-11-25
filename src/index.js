@@ -1469,6 +1469,7 @@ async function main() {
         if (result.info.admin) log(`  ${colors.dim}Admin App: ${result.info.admin}${colors.reset}`)
         if (result.info.owner?.sign_in) log(`  ${colors.dim}Sign in as its owner: ${result.info.owner.sign_in}${colors.reset}`)
         log(`  ${colors.dim}\`uniweb dev\` registers its types, sends blueprint.yml, and serves the site on port ${result.devPort}.${colors.reset}`)
+        log(`  ${colors.dim}The engine's own guide, for you or your agent: ${prefix} engine guide${colors.reset}`)
       } else {
         log(`  ${colors.yellow}⚠ ${result.reason}${colors.reset}`)
         log(`  ${colors.dim}The project runs on its mock backend until then. To finish: cd ${inPlace ? '.' : projectName} && ${prefix} engine setup${colors.reset}`)
