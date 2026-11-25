@@ -290,11 +290,19 @@ export async function freePorts(start, count = 1, avoid = new Set()) {
   throw new Error(`No free port between ${start} and ${start + 1000}.`)
 }
 
-function portFree(port) {
+/**
+ * Free on loopback and on every interface: a port Docker publishes may be bound on either, and a
+ * bind on one can succeed beside the other's.
+ */
+async function portFree(port) {
+  return (await bindable(port, '127.0.0.1')) && (await bindable(port, '0.0.0.0'))
+}
+
+function bindable(port, host) {
   return new Promise((resolve) => {
     const server = createServer()
     server.once('error', () => resolve(false))
-    server.listen(port, '127.0.0.1', () => server.close(() => resolve(true)))
+    server.listen(port, host, () => server.close(() => resolve(true)))
   })
 }
 

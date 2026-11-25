@@ -26,7 +26,7 @@
  * @module
  */
 
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import yaml from 'js-yaml'
 import { DEFAULT_BACKEND_ORIGIN, loggedInOrigin } from '../utils/config.js'
@@ -45,6 +45,9 @@ import {
   findEngineFor,
   claimedPorts,
 } from './local.js'
+
+/** The files of a release folder `--engine` takes, beside its images archive. */
+const RELEASE_FILES = new Set(['compose.yaml', '.env.example', 'AGENTS.md', 'README.md', 'LICENCE.md'])
 
 /** Where the dev server answers a local engine's compute calls (`@uniweb/build`'s `DEV_COMPUTE_ADDRESS`). */
 const COMPUTE_PATH = '/_compute'
@@ -93,9 +96,13 @@ export async function setupEngine({ siteDir, projectName, from = null, log = con
   const dir = engineDir(name)
   mkdirSync(dir, { recursive: true })
   if (from) {
-    const compose = join(from, 'compose.yaml')
-    if (!existsSync(compose)) return { ok: false, reason: `${from} holds no compose.yaml, which is what runs the engine.` }
-    copyFileSync(compose, join(dir, 'compose.yaml'))
+    if (!existsSync(join(from, 'compose.yaml'))) return { ok: false, reason: `${from} holds no compose.yaml, which is what runs the engine.` }
+    // What a release carries for this machine: the compose file, the settings it reads, the guide
+    // (`uniweb engine guide`) and the images archive (`loadImages`). A folder holding only the
+    // compose file, with its images in Docker already, works as well.
+    for (const file of readdirSync(from)) {
+      if (RELEASE_FILES.has(file) || /^images-[A-Za-z0-9_-]+\.tar\.gz$/.test(file)) copyFileSync(join(from, file), join(dir, file))
+    }
   } else {
     const { engine } = await import('../commands/engine.js')
     const got = await engine(['get', dir])
