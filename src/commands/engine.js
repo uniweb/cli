@@ -3,6 +3,8 @@
  *
  *   uniweb engine get [<dir>]      write the engine's files into <dir> (default `uniweb-engine`)
  *   uniweb engine update [<dir>]   the same, for a directory that holds them (default `.`)
+ *   uniweb engine setup | start | stop | status | reset   the engine running here, for this project
+ *                                  (`../engine/verbs.js`)
  *
  * The backend you are logged in to says which files make the engine for this machine, and
  * gives each a path, a size, a SHA-256 and an address to download it from. The CLI writes
@@ -35,6 +37,7 @@ import { pipeline } from 'node:stream/promises'
 import { BackendClient } from '../backend/client.js'
 import { humanBytes } from '../utils/bytes.js'
 import { checkFlags } from '../utils/flag-guard.js'
+import { ENGINE_VERBS, engineVerb } from '../engine/verbs.js'
 
 const c = {
   reset: '\x1b[0m',
@@ -191,10 +194,14 @@ function progressFor(file) {
  */
 export async function engine(args = [], deps = {}) {
   const sub = args[0]
-  if (sub !== 'get' && sub !== 'update') {
+  if (sub !== 'get' && sub !== 'update' && !ENGINE_VERBS.includes(sub)) {
     console.log('uniweb engine <command>')
-    console.log('  get [<dir>]     Download the Application Engine for this machine into <dir> (default uniweb-engine)')
-    console.log('  update [<dir>]  Bring a downloaded engine up to date (default: this directory)')
+    console.log('  setup [--engine <dir>]  Give this project its engine on this machine, and point the project at it')
+    console.log('  start | stop [<name>]   Start the project\'s engine (and wait until it answers), or stop it')
+    console.log('  status [<name>]         Whether it runs, its addresses, and whether the CLI works with it')
+    console.log('  reset [<name>] --yes    Wipe it and start over; `uniweb dev` registers the types again')
+    console.log('  get [<dir>]             Download the Application Engine for this machine into <dir> (default uniweb-engine)')
+    console.log('  update [<dir>]          Bring a downloaded engine up to date (default: this directory)')
     return { exitCode: sub ? 2 : 0 }
   }
 
@@ -203,6 +210,7 @@ export async function engine(args = [], deps = {}) {
     say.err(bad.message)
     return { exitCode: 2 }
   }
+  if (ENGINE_VERBS.includes(sub)) return engineVerb(sub, args.slice(1))
   const positional = args.slice(1).filter((a) => !a.startsWith('-'))
   if (positional.length > 1) {
     say.err(`Usage: uniweb engine ${sub} [<dir>]`)

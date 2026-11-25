@@ -1443,6 +1443,39 @@ async function main() {
     }
   }
 
+  // ⭐ A SOLUTION'S PROJECT GETS ITS ENGINE: a template whose site asks for a `backend` service
+  // and says how it begins (`blueprint.yml`) is given its own engine on this machine, started, and
+  // the project pointed at it (`engine/setup.js`) — so "create, then work" is the whole of it.
+  // Before git, so the first commit holds the project as it will run. A step that can't finish
+  // leaves the project on its mock, and says how to finish: `uniweb engine setup`.
+  // `--no-engine` keeps the mock; `--engine <dir>` takes the engine's files from a folder.
+  if (!isBlank && !args.includes('--no-engine')) {
+    const { projectSite } = await import('./engine/verbs.js')
+    const { isSolutionSite, setupEngine } = await import('./engine/setup.js')
+    const site = await projectSite(projectDir)
+    if (site && isSolutionSite(site.dir)) {
+      const { readFlagValue } = await import('./utils/args.js')
+      const from = readFlagValue(args, '--engine')
+      log('')
+      log(`${colors.bright}A solution: giving it its engine on this machine${colors.reset}`)
+      const result = await setupEngine({
+        siteDir: site.dir,
+        projectName: site.projectName,
+        from: typeof from === 'string' ? resolve(from) : null,
+        log
+      })
+      if (result.ok) {
+        success(`Its engine runs at ${result.info.api.replace(/\/api$/, '')}, and the CLI works with it.`)
+        if (result.info.admin) log(`  ${colors.dim}Admin App: ${result.info.admin}${colors.reset}`)
+        if (result.info.owner?.sign_in) log(`  ${colors.dim}Sign in as its owner: ${result.info.owner.sign_in}${colors.reset}`)
+        log(`  ${colors.dim}\`uniweb dev\` registers its types, sends blueprint.yml, and serves the site on port ${result.devPort}.${colors.reset}`)
+      } else {
+        log(`  ${colors.yellow}⚠ ${result.reason}${colors.reset}`)
+        log(`  ${colors.dim}The project runs on its mock backend until then. To finish: cd ${inPlace ? '.' : projectName} && ${prefix} engine setup${colors.reset}`)
+      }
+    }
+  }
+
   // Initialize git repository
   if (!noGit) {
     // Skip git init if a repository already holds the project (common for
@@ -1648,6 +1681,14 @@ ${colors.bright}Options:${colors.reset}
   --blank            Create an empty workspace (grow with \`uniweb add\`)
   --name <name>      Project name (overrides slugified basename when used with \`.\`)
   --no-git           Skip git repository initialization
+  --no-engine        A solution template: keep its mock backend, with no engine
+  --engine <dir>     A solution template: its engine's files from <dir> (a
+                     compose.yaml), not downloaded with \`uniweb engine get\`
+
+${colors.bright}A solution template${colors.reset} (its site asks for a \`backend\` and has a blueprint.yml)
+  gets its own engine on this machine: Docker runs it, from
+  \`~/.uniweb/engines/<name>/\`, the CLI signs in to it, and the site's
+  \`$devBackend\` names it. \`uniweb dev\` then registers the project's types.
 
 ${colors.bright}In-place mode (\`uniweb create .\`):${colors.reset}
   Pairs with the GitHub-first workflow — clone an empty repo locally

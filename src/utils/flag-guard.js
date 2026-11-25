@@ -158,7 +158,9 @@ const VERBS = {
   guide: ['--path'],
   // A directory is all it takes: the backend you are logged in to says what the engine is.
   // `--org` / `--personal` are read on the way to a login, which may pick a workspace.
-  engine: ['--org', '--personal']
+  // `setup` takes the folder an engine's files are in (`--engine`), and `reset` wipes data only
+  // with `--yes`.
+  engine: ['--org', '--personal', '--engine', '--yes']
 }
 
 /**

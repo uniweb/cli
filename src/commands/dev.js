@@ -292,6 +292,17 @@ export async function dev(args = []) {
       )
     }
   }
+  // ⭐ A PROJECT WITH AN ENGINE ON THIS MACHINE (`$devBackend` naming one): it is started if it
+  // is stopped, the site is served on the port the engine calls its compute functions on, the
+  // runner gets the key the engine signs those calls with, and the project's types are registered
+  // when they changed (`../engine/dev.js`). Not under `--published`, which uses the published site.
+  let devEngine = null
+  if (!wanted.published) {
+    const { prepareDevEngine } = await import('../engine/dev.js')
+    devEngine = await prepareDevEngine({ sitePath, rootDir })
+    if (devEngine.port && wanted.port === null) wanted.port = devEngine.port
+    if (devEngine.functionsKey) env = { ...env, UNIWEB_FUNCTIONS_KEY: devEngine.functionsKey }
+  }
   // That port or none: the dev server refuses to move past it (`dev-server.js`).
   if (wanted.port !== null) env = { ...env, [DEV_PORT_ENV]: String(wanted.port) }
 
@@ -304,6 +315,12 @@ export async function dev(args = []) {
 
   const startedAt = Date.now()
   const child = spawn(bin, rest, { cwd: rootDir, stdio: 'inherit', env })
+  // While it runs, a change to the project's types registers them on its engine again.
+  if (devEngine?.engine && devEngine.foundationDir) {
+    const { watchTypes } = await import('../engine/dev.js')
+    const stopWatching = watchTypes({ foundationDir: devEngine.foundationDir, ...devEngine.engine })
+    child.on('close', stopWatching)
+  }
   child.on('close', (code) => process.exit(code ?? 0))
   child.on('error', (err) => {
     console.error(`${RED}✗${RESET} Failed to start dev server: ${err.message}`)
