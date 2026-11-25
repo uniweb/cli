@@ -16,9 +16,9 @@
  * What it registered is kept beside the engine (`registered.json`: a digest of each foundation's
  * types, and of the blueprint it sent), so a start with nothing changed registers nothing. `uniweb engine reset` forgets it.
  *
- * ⚠️ A registered version is fixed: the engine refuses a changed type under the same version
- * (`version_content_changed`). Until it takes one in place, a changed type means
- * `uniweb engine reset --yes`, and this says so.
+ * A local engine takes a changed type under the version it holds, and upgrades it in place, as a
+ * live backend upgrades its types: additively. A change the entries it holds refuse is refused, and
+ * this says to start the engine over: `uniweb engine reset --yes`.
  *
  * @module
  */
@@ -97,7 +97,7 @@ export async function registerTypes({ foundationDir, dir, info }) {
     return 'registered'
   }
   warn(
-    'The engine did not take the types (above). A type changed under a version it already holds is refused: ' +
+    'The engine did not take the types (above). A change the entries it holds refuse is refused: ' +
       'to start the engine over with the types as they are now, run `uniweb engine reset --yes`, then `uniweb dev`.'
   )
   return 'refused'
