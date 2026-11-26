@@ -36,6 +36,8 @@ site/
 | `event` | a calendar event, conference or webinar | flat |
 | `product` | something a business sells | by section: `brief`, `body` |
 | `service` | a service a business offers | by section: `brief`, `body` |
+| `location` | a place a business is found at, such as a shop or an office, or an area it serves | by section: `brief`, `body` |
+| `session` | something held every week at a set time: a class, a lesson, a service or office hours | flat |
 | `project` | a portfolio item, case study or project showcase | flat |
 | `testimonial` | what a customer, client or patient said: `quote`, `name`, `context`, `avatar`, `rating`, `date`, `url` | flat |
 | `publication` | an academic paper or research document | flat |
