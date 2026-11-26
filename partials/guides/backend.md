@@ -214,7 +214,7 @@ const { step, status, result, error, confirm } = useMailedLink()
 // step: null | 'verify' | 'reset' | 'offer' | 'signin'   status: 'idle' | 'working' | 'done' | 'error'
 ```
 
-`verify` finishes by itself. `reset` waits for `confirm({ new_password })` (`error.extensions.reason === 'password_too_short'`; the link works again). `offer` waits for a sign-in then claims; `result` is counts `{ invitations, grants }`; `error.kind === 'absent'` means unknown, revoked or used, alike — one sentence, no cause. `signin` waits for a click: `confirm()` signs in — never on load, which a mail scanner's prefetch would spend. Render it where the root renders (a header or layout). Never copy the token anywhere.
+`verify` finishes by itself, and confirms the address without signing the person in (`/auth/me` stays signed out), so its next step is a sign-in. `reset` waits for `confirm({ new_password })` (`error.extensions.reason === 'password_too_short'`; the link works again). `offer` waits for a sign-in then claims; `result` is counts `{ invitations, grants }`; `error.kind === 'absent'` means unknown, revoked or used, alike — one sentence, no cause. `signin` waits for a click: `confirm()` signs in — never on load, which a mail scanner's prefetch would spend. Render it where the root renders (a header or layout). Never copy the token anywhere.
 
 **Invitations** wait for the member's answer, mailed link or not:
 
