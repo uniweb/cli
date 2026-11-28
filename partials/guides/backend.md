@@ -152,11 +152,13 @@ await checkout(offering)         // sends the buyer to pay; a free one-off is he
 - A coupon code: `const { check, coupon, applied, checking, clear } = useCoupon()`. `check(code)` previews it with the checkout's rules: `coupon.discount` (`{ type: 'percent'|'amount', value, currency?, duration }`), or `valid: false` with `coupon.reason`, one of `COUPON_CAUSE` from `@uniweb/api/wire`. `couponReason(coupon, offering)` adds `wrong_currency` (an amount off in another currency); a free offering ignores a code. Word each reason in your foundation, with a fallback for a new one. Then `checkout(offering, { coupon: applied })`. It checks again, and a refusal's `cause` is the same set.
 - Paying in the page: `const { payment } = await checkout(offering, { coupon, inPage: true })`, then `<Overlay open onClose={payment.cancel}><div ref={payment.mount} /></Overlay>` and `await payment.done` (`'paid'`/`'cancelled'`; after `'paid'`, `refresh()` until `owned`). The provider's form shows the total and discount itself. Where the backend can't, `checkout` navigates to the payment page as usual.
 
-**Prices for visitors who aren't signed in** come as records, so the first page a visit lands on already shows them, to people and to search engines. A section declares the store's catalog, a site query reads it, and the site's `blueprint.yml` opens it to visitors. All three are needed: the engine leaves the `publicQueries` line out (`not_a_site_type`) while no section's `data:` reads `@uniweb/catalog`.
+**Prices for visitors who aren't signed in** come as records, so the first page a visit lands on already shows them, to people and to search engines. A section type declares the store's catalog, a site query reads it, the section (or its page) asks for that query, and the site's `blueprint.yml` opens it to visitors. All four are needed. Without `query: store` nothing fetches it, and the section gets no data, with no warning. The engine leaves the `publicQueries` line out (`not_a_site_type`) while no section's `data:` reads `@uniweb/catalog`.
 
 ```yaml
 # queries.yml
 store: { schema: '@uniweb/catalog' }
+# the section's frontmatter, or its page.yml
+query: store
 # blueprint.yml
 publicQueries:
   '@uniweb/catalog': { whole: true }
