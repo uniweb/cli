@@ -128,10 +128,11 @@ describe('site.yml', () => {
   })
 })
 
-test('⭐ what `uniweb dev` registers changes with the types and main.js, and not with a component', () => {
+test('⭐ what `uniweb dev` registers changes with the types, main.js and a meta.js, and not with a component', () => {
   const dir = mkdtempSync(join(tmpdir(), 'uw-engine-types-'))
   mkdirSync(join(dir, 'schemas'))
   mkdirSync(join(dir, 'sections'))
+  writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'x', main: './_entry.generated.js' }))
   writeFileSync(join(dir, 'main.js'), "export default { name: 'x' }\n")
   writeFileSync(join(dir, 'schemas', 'a.yml'), 'fields: {}\n')
   writeFileSync(join(dir, 'sections', 'Hero.jsx'), 'export default () => null\n')
@@ -139,7 +140,12 @@ test('⭐ what `uniweb dev` registers changes with the types and main.js, and no
   writeFileSync(join(dir, 'sections', 'Hero.jsx'), 'export default () => 1\n')
   assert.equal(typesDigest(dir), first)
   writeFileSync(join(dir, 'schemas', 'a.yml'), 'fields: { t: { type: string } }\n')
-  assert.notEqual(typesDigest(dir), first)
+  const second = typesDigest(dir)
+  assert.notEqual(second, first)
+  // A section type's meta.js says which types the foundation renders (`@uniweb/catalog` among them).
+  mkdirSync(join(dir, 'sections', 'Offer'))
+  writeFileSync(join(dir, 'sections', 'Offer', 'meta.js'), "export default { data: { store: { schema: '@uniweb/catalog' } } }\n")
+  assert.notEqual(typesDigest(dir), second)
 })
 
 test('⭐ `uniweb dev` sends blueprint.yml once, named in full, and an edit after it was taken is only said', async () => {
@@ -167,8 +173,10 @@ test('⭐ `uniweb dev` sends blueprint.yml once, named in full, and an edit afte
     mkdirSync(join(project, 'site'))
     mkdirSync(join(project, 'src'))
     writeFileSync(join(project, 'site', 'blueprint.yml'), "signup: open\naccess:\n  '@/track':\n    all: { members: read }\n")
-    writeFileSync(join(project, 'src', 'package.json'), JSON.stringify({ name: 'src', version: '0.3.0' }))
+    writeFileSync(join(project, 'src', 'package.json'), JSON.stringify({ name: 'src', version: '0.3.0', main: './_entry.generated.js' }))
     writeFileSync(join(project, 'src', 'main.js'), "export default { name: '@jane/conference' }\n")
+    mkdirSync(join(project, 'src', 'schemas'))
+    writeFileSync(join(project, 'src', 'schemas', 'track.yml'), 'name: track\nsections:\n  identity:\n    fields:\n      name: { type: string }\n')
     const dir = engine('conf')
     const args = { siteDir: join(project, 'site'), foundationDir: join(project, 'src'), dir, info: { api: `${origin}/api` } }
 
@@ -192,6 +200,50 @@ test('⭐ `uniweb dev` sends blueprint.yml once, named in full, and an edit afte
     rmSync(join(dir, 'registered.json'))
     status = 409
     assert.equal(await sendBlueprint(args), 'held')
+  } finally {
+    await new Promise((done) => server.close(done))
+    h.restore()
+  }
+})
+
+test('⭐ `uniweb dev` holds blueprint.yml back while the engine would leave a line out, and sends it once the foundation declares the type', async () => {
+  const h = home()
+  const { createServer } = await import('node:http')
+  const asked = []
+  const server = createServer((req, res) => {
+    let body = ''
+    req.on('data', (c) => (body += c))
+    req.on('end', () => {
+      asked.push(JSON.parse(body))
+      res.setHeader('content-type', 'application/json')
+      res.end(JSON.stringify({ applied: true, left_out: [] }))
+    })
+  })
+  await new Promise((done) => server.listen(0, '127.0.0.1', done))
+  const origin = `http://127.0.0.1:${server.address().port}`
+  try {
+    const { writeRegistryAuth } = await import('../src/utils/registry-auth.js')
+    await writeRegistryAuth({ origin, token: 'TKN' })
+    const { sendBlueprint } = await import('../src/engine/dev.js')
+    const project = mkdtempSync(join(tmpdir(), 'uw-engine-bp-wait-'))
+    mkdirSync(join(project, 'site'))
+    mkdirSync(join(project, 'src', 'sections'), { recursive: true })
+    writeFileSync(join(project, 'site', 'blueprint.yml'), "publicQueries:\n  '@uniweb/catalog': { whole: true }\n")
+    writeFileSync(join(project, 'src', 'package.json'), JSON.stringify({ name: 'src', version: '0.1.0', main: './_entry.generated.js' }))
+    writeFileSync(join(project, 'src', 'main.js'), "export default { name: '@jane/club' }\n")
+    const dir = engine('club')
+    const args = { siteDir: join(project, 'site'), foundationDir: join(project, 'src'), dir, info: { api: `${origin}/api` } }
+
+    // No section reads the catalog yet: the engine would leave the line out for good, so it waits.
+    assert.equal(await sendBlueprint(args), 'waiting')
+    assert.equal(asked.length, 0)
+
+    // A section type that reads it: now it is sent.
+    mkdirSync(join(project, 'src', 'sections', 'Offer'))
+    writeFileSync(join(project, 'src', 'sections', 'Offer', 'index.jsx'), 'export default () => null\n')
+    writeFileSync(join(project, 'src', 'sections', 'Offer', 'meta.js'), "export default { data: { store: { schema: '@uniweb/catalog', whole: true } } }\n")
+    assert.equal(await sendBlueprint(args), 'sent')
+    assert.deepEqual(Object.keys(asked[0].blueprint.publicQueries), ['@uniweb/catalog'])
   } finally {
     await new Promise((done) => server.close(done))
     h.restore()

@@ -322,7 +322,14 @@ export async function dev(args = []) {
   if (devEngine?.engine && devEngine.foundationDir) {
     const { watchTypes } = await import('../engine/dev.js')
     for (const foundationDir of [devEngine.foundationDir, ...(devEngine.extensionDirs || [])]) {
-      child.on('close', watchTypes({ foundationDir, ...devEngine.engine }))
+      child.on(
+        'close',
+        watchTypes({
+          foundationDir,
+          ...devEngine.engine,
+          blueprint: { siteDir: sitePath, foundationDir: devEngine.foundationDir, extensionDirs: devEngine.extensionDirs || [] },
+        })
+      )
     }
   }
   child.on('close', (code) => process.exit(code ?? 0))

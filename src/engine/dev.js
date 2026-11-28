@@ -8,7 +8,9 @@
  *   - it hands the dev server the engine's functions key, so its compute runner checks each call;
  *   - it registers the project's types (`uniweb register --schema-only`) when the engine holds
  *     none of them yet, and again when `src/schemas` changes while it runs;
- *   - then, once, it sends the site's `blueprint.yml`, how the engine begins (`sendBlueprint`);
+ *   - then, once, it sends the site's `blueprint.yml`, how the engine begins (`sendBlueprint`) —
+ *     held back while a line names what none of the site's foundations declares yet, since the
+ *     engine would leave that line out for good, and sent once the foundations declare it;
  *   - once the dev server listens, it tells the engine the site's address, so the mail it sends
  *     links to the site (`tellEngineSite`).
  *
@@ -28,9 +30,10 @@
 
 import { createHash } from 'node:crypto'
 import { existsSync, readdirSync, readFileSync, statSync, watch, writeFileSync } from 'node:fs'
-import { join, relative } from 'node:path'
+import { basename, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import yaml from 'js-yaml'
+import { resolveFoundationSrcPath } from '@uniweb/build'
 import { loggedInOrigin } from '../utils/config.js'
 import { readRegistryAuth } from '../utils/registry-auth.js'
 import { runRelayed } from '../utils/closed-reader.js'
@@ -128,7 +131,14 @@ export async function registerTypes({ foundationDir, dir, info }) {
  * afterwards is the setting's own request (the Admin App), or `uniweb engine reset`, which takes
  * it again. A `blueprint.yml` edited after it was taken is said, not sent.
  *
- * @returns {Promise<'sent'|'held'|'none'|'failed'>}
+ * ⭐ HELD BACK WHILE THE ENGINE WOULD LEAVE A LINE OUT. Since it is taken once, a line naming a type,
+ * mapping or compute file none of the site's foundations declares yet (`@uniweb/build/uwx`'s
+ * `siteBlueprintWarnings`, the check a push makes) would be lost for good: a first `uniweb dev`
+ * before the section that reads `@uniweb/catalog` was written lost the visitors' prices that way.
+ * So it waits, says which lines and why, and is sent once they name what the foundations declare —
+ * at the next start, or when a re-registration runs while the dev server does (`watchTypes`).
+ *
+ * @returns {Promise<'sent'|'held'|'waiting'|'none'|'failed'>}
  */
 export async function sendBlueprint({ siteDir, foundationDir, extensionDirs = [], dir, info }) {
   const file = join(siteDir, 'blueprint.yml')
@@ -156,6 +166,17 @@ export async function sendBlueprint({ siteDir, foundationDir, extensionDirs = []
       .filter((f) => f.name && f.version)
       .map((f) => `${f.name}@${f.version}`)
     body = { foundations, blueprint: blueprintForWire(blueprint, scope) }
+    const { siteBlueprintWarnings } = await import('@uniweb/build/uwx')
+    const leftOut = await siteBlueprintWarnings(siteDir, { scope, foundationDir })
+    if (leftOut.length) {
+      for (const line of leftOut) warn(line)
+      note(
+        'blueprint.yml waits: the engine takes it once, and would leave the lines above out for good. ' +
+          '`uniweb dev` sends it once they name what the site\'s foundations declare (write the section type that reads ' +
+          'the type, or fix or remove the line), when the types are next registered or at its next start.'
+      )
+      return 'waiting'
+    }
   } catch (err) {
     warn(`blueprint.yml was not sent: ${err.message}`)
     return 'failed'
@@ -251,33 +272,54 @@ export async function tellEngineSite({ dir, info, url }) {
 }
 
 /**
- * Watch the foundation's types while the dev server runs, and register them again when they
- * change. Returns a function that stops watching.
+ * Watch the foundation's source while the dev server runs, and register its types again when what
+ * registering sends changes (`typesDigest`); then send `blueprint.yml` if it is still waiting
+ * (`sendBlueprint`). Returns a function that stops watching.
+ *
+ * @param {object} p
+ * @param {string} p.foundationDir
+ * @param {string} p.dir - the engine's folder
+ * @param {object} p.info - its `engine.json`
+ * @param {{ siteDir: string, foundationDir: string, extensionDirs: string[] }} [p.blueprint] - the
+ *        site whose `blueprint.yml` to send, with its primary foundation and its extensions
  */
-export function watchTypes({ foundationDir, dir, info }) {
-  const at = schemasDir(foundationDir)
-  if (!at) return () => {}
+export function watchTypes({ foundationDir, dir, info, blueprint = null }) {
+  // What `typesDigest` reads, and nothing else: never the foundation's own folder, which holds
+  // `dist/` (which registering writes) and `node_modules/`.
+  const dirs = [schemasDir(foundationDir), ...metaDirs(foundationDir)].filter(Boolean)
+  const files = mainFiles(foundationDir)
+  if (!dirs.length && !files.length) return () => {}
   let timer = null
   let running = false
-  const watcher = watch(at, { recursive: true }, () => {
+  const changed = () => {
     clearTimeout(timer)
     timer = setTimeout(async () => {
       if (running) return
       running = true
       try {
-        await registerTypes({ foundationDir, dir, info })
+        // Most edits are to components, which registering does not send: nothing to do.
+        if (readRegistered(dir)[foundationDir] === typesDigest(foundationDir)) return
+        const registered = await registerTypes({ foundationDir, dir, info })
+        if (registered === 'registered' && blueprint && !readRegistered(dir).blueprint) {
+          await sendBlueprint({ ...blueprint, dir, info })
+        }
       } finally {
         running = false
       }
     }, 800)
-  })
+  }
+  const watchers = [...dirs.map((at) => watch(at, { recursive: true }, changed)), ...files.map((at) => watch(at, changed))]
   return () => {
     clearTimeout(timer)
-    watcher.close()
+    for (const w of watchers) w.close()
   }
 }
 
-/** A digest of what registering sends that a dev edit changes: the types, and `main.js`. */
+/**
+ * A digest of what registering sends that a dev edit changes: the types, `main.js`, and each
+ * section type's and layout's `meta.js`, whose `data:` says which types the foundation renders —
+ * how an engine counts a type only a backend holds (`@uniweb/catalog`) as the site's.
+ */
 export function typesDigest(foundationDir) {
   const hash = createHash('sha256')
   const at = schemasDir(foundationDir)
@@ -286,10 +328,27 @@ export function typesDigest(foundationDir) {
       hash.update(relative(at, file)).update('\0').update(readFileSync(file)).update('\0')
     }
   }
+  for (const under of metaDirs(foundationDir)) {
+    for (const file of filesUnder(under)) {
+      if (!/^meta\.[cm]?js$/.test(basename(file))) continue
+      hash.update(relative(foundationDir, file)).update('\0').update(readFileSync(file)).update('\0')
+    }
+  }
   for (const main of [join(foundationDir, 'main.js'), join(foundationDir, 'src', 'main.js')]) {
     if (existsSync(main)) hash.update('main.js\0').update(readFileSync(main))
   }
   return hash.digest('hex')
+}
+
+/** The folders of section types and layouts, in the foundation's source root (`resolveFoundationSrcPath`). */
+function metaDirs(foundationDir) {
+  const src = resolveFoundationSrcPath(foundationDir)
+  return ['sections', 'layouts'].map((kind) => join(src, kind)).filter((at) => existsSync(at) && statSync(at).isDirectory())
+}
+
+/** The `main.js` files `typesDigest` reads. */
+function mainFiles(foundationDir) {
+  return [join(foundationDir, 'main.js'), join(foundationDir, 'src', 'main.js')].filter((at) => existsSync(at))
 }
 
 function schemasDir(foundationDir) {
